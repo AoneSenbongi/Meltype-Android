@@ -2,7 +2,7 @@ name: Android prototype
 on:
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 env:
   MOZC_REVISION: 60fe4012e5eaa26805dbbb8e5548cbe6db4aaf98
 jobs:
@@ -130,18 +130,3 @@ jobs:
           name: Meltype-Android-prototype
           path: android-distribution
           if-no-files-found: error
-      - name: Publish verified Android 0.2.0
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-        run: |
-          cd android-distribution
-          sha256sum -c Meltype-Android-prototype.apk.sha256
-          grep -q '^PASS:' ANDROID_TEST_RESULT.txt
-          grep -q '^PASS:' ANDROID_UI_TEST_RESULT.txt
-          zip -q Meltype-Android-prototype-source-notices.zip corresponding-source.zip LICENSE THIRD_PARTY_NOTICES.txt ANDROID_PROTOTYPE.md SOURCE_VERSION.txt ANDROID_TEST_RESULT.txt ANDROID_UI_TEST_RESULT.txt
-          if ! gh release view android-prototype-0.2.0 >/dev/null 2>&1; then
-            gh release create android-prototype-0.2.0 --target "$GITHUB_SHA" --prerelease --title 'Meltype Android 0.2.0 · アイコンと画面改善' --notes-file ../docs/ANDROID_RELEASE.md
-          fi
-          gh release upload android-prototype-0.2.0 Meltype-Android-prototype.apk Meltype-Android-prototype.apk.sha256 Meltype-Android-prototype-source-notices.zip android-setup.png android-keyboard.png android-candidates.png android-english.png --clobber
-          gh release edit android-prototype-0.2.0 --notes-file ../docs/ANDROID_RELEASE.md

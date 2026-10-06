@@ -322,6 +322,24 @@ public sealed class CompositionController
         UpdateView();
     }
 
+    /// <summary>Androidの文節確定。選択中までを確定し、後続の候補と読みを残す。</summary>
+    public void CommitSelectedPrefix()
+    {
+        if (!_converting || _clauses.Count == 0) { CommitPending(); return; }
+        var prefix = _clauses.Take(_selectedClause + 1).ToList();
+        var remaining = _clauses.Skip(_selectedClause + 1).ToList();
+        var remainingRaw = string.Concat(remaining.Select(c => c.IsEnglish ? c.Reading : c.Raw ?? c.Reading));
+        _clauses = prefix;
+        Learn();
+        CommitText(string.Concat(prefix.Select(c => c.Text)), prefix.All(c => c.IsEnglish),
+            string.Concat(prefix.Select(c => c.Raw ?? c.Reading)), chosen: true);
+        foreach (var character in remainingRaw) _text.Append(character);
+        _clauses = remaining;
+        _selectedClause = 0;
+        _converting = remaining.Count > 0;
+        UpdateView();
+    }
+
     /// <summary>
     /// 入力先が変わった (別のウィンドウ・パスワード欄・入力欄でない所にフォーカスが移った) とき。未確定の内容を確定せずに捨てる。
     /// 確定すると、移った先 (別のアプリやパスワード欄) に入ってしまうため。捨てたら true。

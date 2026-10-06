@@ -2,19 +2,21 @@
 
 [雪代／Yukishiro氏のMeltype](https://github.com/yksr-melt/Meltype)を基にした非公式Androidキーボードです。Android版はこの専用リポジトリで開発・配布します。Windows版の導入は[PC版のREADME](https://github.com/AoneSenbongi/Meltype/tree/google-native-ime)を参照してください。
 
-PC版と分離し、元のMeltypeからのGit履歴と著作権表記を引き継いだ独立リポジトリです。0.2.0の公開APKは分離前と同じファイルなので、リポジトリの分離だけを理由に再インストールする必要はありません。
+PC版と分離し、元のMeltypeからのGit履歴と著作権表記を引き継いだ独立リポジトリです。0.3.0のAPKは旧0.2.0と署名が異なるため、上書き更新できません。旧版の削除で学習データも消えます。
 
 ## できること
 
-QWERTYのローマ字入力で、日英自動判別とOSS版Mozcによるライブ変換を使えます。文字は使用中のアプリの入力欄へ未確定文字として表示します。入力中から上部に変換候補を表示し、タップすると他の文節と英語部分を保って確定します。Spaceで候補を選び、Enterで確定することもできます。
+QWERTYのローマ字入力で、日英自動判別とOSS版Mozcによるライブ変換を使えます。文字は使用中のアプリの入力欄へ未確定文字として表示します。入力中から上部に変換候補を表示し、タップすると選択中の文節までを確定し、後続文節の変換を続けられます。Spaceで候補を選び、Enterで確定することもできます。
 
 「日英切替」を押すと英語だけの直接入力になり、もう一度押すとMeltypeの日英自動判別へ戻ります。切替前の未確定文字は確定して残します。日本語の句読点は全角の「，」「．」です。フリック入力はありません。
+
+0.3.0ではキーのタッチ範囲、文字と候補の表示、長押し削除を改良し、記号欄へ「」を追加しました。「，」キーは語尾から文末を推定して「．」へ切り替えます。候補がないときは候補欄の右端からキーボードを閉じられます。詳細と検証範囲は[0.3.0の変更点](docs/ANDROID_RELEASE_0_3_0.md)を参照してください。
 
 ## インストール
 
 対象はAndroid 8.0以降のarm64端末です。x86_64はエミュレーターの検証用です。
 
-1. [Android試作版0.2.0のRelease](https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-prototype-0.2.0)から `Meltype-Android-prototype.apk` を端末へダウンロードします。
+1. [Android試作版0.3.0のRelease](https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-prototype-0.3.0)から `Meltype-Android-0.3.0.apk` を端末へダウンロードします。
 2. APKを開き、ダウンロードに使ったアプリからのインストールを許可します。
 3. Meltypeアプリを開き、「キーボードを有効にする」で有効にします。
 4. 「キーボードを選ぶ」でMeltypeを選び、アプリ内の試し書き欄で入力します。

@@ -78,6 +78,7 @@ assert find("content-desc", "q").get("text") == "Q", "Shift does not update lett
 tap(find("content-desc", "大文字・小文字を切り替える"))
 assert find("content-desc", "q").get("text") == "q"
 keys = {node.get("content-desc"): node for node in tree().iter("node") if node.get("class") == "android.widget.Button"}
+find("content-desc", "キーボードを閉じる")
 for letter in "kyouhagoogledekensaku":
     tap(keys[letter])
     time.sleep(.08)
@@ -104,8 +105,53 @@ assert find("resource-id", editor_id).get("text", "").endswith("abc"), "English 
 capture("android-english.png")
 tap(mode)
 assert find("content-desc", "英語専用モードに切り替える").get("text") == "日英"
+
+# Start with an empty editor, then verify the unconfirmed suffix separately
+# from the editor text (which also contains the confirmed prefix).
+adb("shell", "am", "force-stop", package)
+adb("shell", "am", "start", "-n", activity)
+time.sleep(1)
+tap(find("resource-id", editor_id))
+keys = {node.get("content-desc"): node for node in tree().iter("node") if node.get("class") == "android.widget.Button"}
+for letter in "warewarehautyuujinda":
+    tap(keys[letter])
+    time.sleep(.04)
+tap(find("content-desc", "空白・変換"))
+tap(find("content-desc", "候補 0"))
+assert find("content-desc", "未確定文字").get("text") == "宇宙人だ", "Confirming first clause committed the suffix"
+import re
+preview = find("content-desc", "未確定文字")
+candidate = find("content-desc", "候補 0")
+assert not any(node.get("content-desc") == "キーボードを閉じる" for node in tree().iter("node")), "Hide button consumes candidate space"
+p = list(map(int, re.findall(r"\d+", preview.attrib["bounds"])))
+c = list(map(int, re.findall(r"\d+", candidate.attrib["bounds"])))
+assert p[3] <= c[1], "Preview overlaps candidate row"
+capture("android-partial-confirm.png")
+tap(find("content-desc", "数字・記号と英字配列を切り替える"))
+tap(find("content-desc", "「"))
+tap(find("content-desc", "」"))
+assert "「」" in find("resource-id", editor_id).get("text", ""), "Corner brackets were not inserted"
+tap(find("content-desc", "数字・記号と英字配列を切り替える"))
+tap(find("content-desc", "英語専用モードに切り替える"))
+keys = {node.get("content-desc"): node for node in tree().iter("node") if node.get("class") == "android.widget.Button"}
+for letter in "abcdefghij":
+    tap(keys[letter])
+delete = find("content-desc", "削除、長押しで連続削除")
+import re
+left, top, right, bottom = map(int, re.findall(r"\d+", delete.attrib["bounds"]))
+x, y = str((left + right) // 2), str((top + bottom) // 2)
+before = find("resource-id", editor_id).get("text", "")
+adb("shell", "input", "swipe", x, y, x, y, "650")
+after = find("resource-id", editor_id).get("text", "")
+assert len(before) - len(after) >= 3, "Held backspace did not repeat"
+time.sleep(.3)
+assert find("resource-id", editor_id).get("text", "") == after, "Deletion continued after release"
+tap(find("content-desc", "キーボードを閉じる"))
+time.sleep(.3)
+assert find("resource-id", editor_id).get("text", "") == after, "Hiding keyboard changed entered text"
+assert not any(node.get("content-desc") == "q" for node in tree().iter("node")), "Keyboard did not close"
 (output / "ANDROID_UI_TEST_RESULT.txt").write_text(
-    "PASS: launcher icon, setup, Shift labels, keyboard taps, mixed live conversion, punctuation, candidates and English mode toggle\n",
+    "PASS: setup, keyboard taps, conversion, partial confirmation, brackets, held deletion and English mode toggle\n",
     encoding="utf-8",
 )
 print((output / "ANDROID_UI_TEST_RESULT.txt").read_text())

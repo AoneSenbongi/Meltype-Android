@@ -13,6 +13,8 @@ public sealed class AndroidInputSession : ICompositionHost
     private char? _character;
     private long _time;
     private bool _english;
+    private static readonly string[] SentenceEndings =
+        ["です", "ます", "でした", "ました", "ません", "ない", "なかった", "だった", "である", "だ", "と思う", "と思います"];
     public CompositionView? View { get; private set; }
 
     public AndroidInputSession(IKanjiConverter converter, Func<string, IReadOnlyList<string>> candidates,
@@ -41,8 +43,20 @@ public sealed class AndroidInputSession : ICompositionHost
         }, character);
     }
 
+    // Conservative local heuristic, not a grammatical or semantic analysis.
+    // Explicit comma/period keys and long-press period remain available.
+    public void SentencePunctuation(string? beforeCursor = null)
+    {
+        var text = (View?.Text ?? beforeCursor ?? "").TrimEnd('」', '』', '）', ')', ' ', '\t');
+        Character(!_english && SentenceEndings.Any(ending => text.EndsWith(ending, StringComparison.Ordinal)) ? '.' : ',');
+    }
+
     public void Key(int code, char? character = null)
     {
+        if (!_english && code == 0x0D && View is { Converting: true })
+        {
+            _controller.CommitSelectedPrefix(); return;
+        }
         _character = character;
         if (_english) { Replay(new KeyEvent(code, 0, false, false, false, ++_time)); _character = null; return; }
         foreach (var up in new[] { false, true })
@@ -58,7 +72,7 @@ public sealed class AndroidInputSession : ICompositionHost
         if (View is not { } view || index < 0 || index >= view.Candidates.Count) return;
         if (view.Converting) _controller.SelectCandidate(index);
         else if (!_controller.SelectLiveCandidate(view.SelectedClause, view.Candidates[index])) return;
-        _controller.CommitPending();
+        _controller.CommitSelectedPrefix();
     }
     public void Commit() => _controller.CommitPending();
     public void Reset() { _controller.Reset(); _controller.ResetContext(); _gate.Abort(); View = null; }
