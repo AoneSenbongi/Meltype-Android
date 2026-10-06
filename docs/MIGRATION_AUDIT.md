@@ -9,3 +9,7 @@
 ソースとSDK・JDK・.NET・配布物は`E:/Prog/Meltype/Android`へ移した。作業先のGit worktreeはGitのmoveで移し、参照先を更新した。分離後のURLとWorkflowを整理中。Windows・Mac・Linuxの配布Workflowと本家向けBotはAndroid専用リポジトリでは使わないため削除する。
 
 APKの署名が変わる再ビルドは行わず、公開済みAPKとソース・ライセンスZIPをハッシュ確認のうえ新しいReleaseにも置く。旧リンクは残す。PC版との分離がAndroidの入力処理を変更したという記述はしない。
+
+## 分離完了時の確認
+
+2026年10月7日、mainと元のAPKに対応するタグ、Releaseの7ファイル、各GitHub digestを確認した。旧リポジトリのReleaseは残し、専用リポジトリへの案内を追加した。浅いGit履歴による送信失敗はoriginから追加取得して解消した。履歴を取得したが、全コミット内容を読み直したものではない。分離に伴う入力コードの変更とAPKの再ビルドはない。

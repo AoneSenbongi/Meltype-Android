@@ -14,8 +14,9 @@ Android 0.2.0はQWERTYのローマ字入力、日英自動判別、英語専用�
 
 独立リポジトリを作成し、作業先をProg以下へ移した。GitHubの同一アカウントへの二つ目のFork作成は既存のPC版を返したため、GitHubのFork表示は付けず、Git履歴とREADMEの出典で派生元を示す。PC版のremoteは変更しない。
 
-README・配布案内・セキュリティ説明をAndroid専用のURLへ変更し、mainへ公開する。公開済み0.2.0のAPK・ハッシュ・ソースZIPを同一ファイルのまま新しいReleaseへ移す。旧リポジトリのReleaseは削除せず移転先を案内する。分離後の公開先とハッシュを確認して、この状態資料を更新する。
+mainのソースと0.2.0のReleaseを専用リポジトリへ公開済み。旧Releaseには新しい配布先を案内した。APK・ハッシュ・ソースZIP・画面画像の7ファイルは旧版と同一で、GitHubのSHA-256 digestとも一致した。再ビルドしていないためAPKの署名は変わらない。
 
+公開先は`https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-prototype-0.2.0`。APKのSHA-256は`a43c3cddd325c1703bc1c4660e4c512c3bb2157502ba6bf16e342a7c3598f64f`。検証日は2026年10月7日。入力処理は変更せず、実機検証と今後のUI改善は未完了。
 ## 保存場所
 
 ソースは`E:/Prog/Meltype/Android/source`、ビルド環境はその親の`dotnet`・`android-sdk`・`jdk`・`nuget`、検証結果と配布物は`distribution`に置く。移動直後のビルド生成物には古い絶対パスが残るため、次のビルドでは新しいSDKとNuGetのパスを指定して復元する。
