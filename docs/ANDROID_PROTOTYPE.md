@@ -22,11 +22,11 @@ Androidのキーボードとして選択する独立したアプリを作る。W
 
 ## ビルド
 
-GitHub Actionsの`Android prototype`を`android-prototype`ブランチで実行する。固定したMozcのソースからJNIライブラリと辞書をビルドし、.NET 10のAndroidアプリへ同梱する。APKと対応するソース、ライセンス通知をArtifactsから取得できる。初回はMozcのビルドに時間がかかる。
+GitHub Actionsの`Android prototype`をこの専用リポジトリの`main`ブランチで実行する。固定したMozcのソースからJNIライブラリと辞書をビルドし、.NET 10のAndroidアプリへ同梱する。APKと対応するソース、ライセンス通知をArtifactsから取得できる。初回はMozcのビルドに時間がかかる。
 
 ## 導入
 
-1. [Android試作版0.2.0のRelease](https://github.com/AoneSenbongi/Meltype/releases/tag/android-prototype-0.2.0)から`Meltype-Android-prototype.apk`をAndroidへダウンロードする。APKを開いたアプリに対してインストールを許可する。
+1. [Android試作版0.2.0のRelease](https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-prototype-0.2.0)から`Meltype-Android-prototype.apk`をAndroidへダウンロードする。APKを開いたアプリに対してインストールを許可する。
 2. Meltypeのアプリを開き、「キーボードを有効にする」からMeltypeを有効にする。
 3. 「キーボードを選ぶ」でMeltypeを選択する。
 4. アプリ内の試し書き欄で`kyouhagoogledekensaku`を入力する。

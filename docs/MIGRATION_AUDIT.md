@@ -1,0 +1,11 @@
+# 状態資料の初回整理
+
+2026年10月7日、実ファイルのREADME・導入資料・Release文書・Workflow・ManifestとGitのstatus・直近3件のlog・差分を確認した。過去の全チャットや全Git履歴を読んだものではない。会話履歴は利用可能な範囲だけを補助資料として照合した。
+
+現在の実装はAndroid 0.2.0。キーボードの配置、アイコン、ライブ候補と日英切替は`318da90`のソースに含まれ、その後の確定コミットは文書変更だけだった。0.2.0の公開APKはエミュレーターで検証済み。実機性能や全アプリでの互換性は未検証。
+
+ユーザーがAndroid版のリポジトリ分離とProg以下への配置を明示した。GitHubの二つ目のFork作成APIは既存の`AoneSenbongi/Meltype`を返したため、`AoneSenbongi/Meltype-Android`を独立リポジトリとして作成した。Git履歴と元作者の表記は保持する。PC用のoriginは共有Git設定にあるため変更せず、Android専用のremoteを追加する。
+
+ソースとSDK・JDK・.NET・配布物は`E:/Prog/Meltype/Android`へ移した。作業先のGit worktreeはGitのmoveで移し、参照先を更新した。分離後のURLとWorkflowを整理中。Windows・Mac・Linuxの配布Workflowと本家向けBotはAndroid専用リポジトリでは使わないため削除する。
+
+APKの署名が変わる再ビルドは行わず、公開済みAPKとソース・ライセンスZIPをハッシュ確認のうえ新しいReleaseにも置く。旧リンクは残す。PC版との分離がAndroidの入力処理を変更したという記述はしない。

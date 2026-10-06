@@ -1,6 +1,8 @@
 # Meltype Android 試作版
 
-[雪代／Yukishiro氏のMeltype](https://github.com/yksr-melt/Meltype)を基にした非公式Androidキーボードです。このブランチではAndroid版を開発しています。Windows版の導入は[PC版のREADME](https://github.com/AoneSenbongi/Meltype/tree/google-native-ime)を参照してください。
+[雪代／Yukishiro氏のMeltype](https://github.com/yksr-melt/Meltype)を基にした非公式Androidキーボードです。Android版はこの専用リポジトリで開発・配布します。Windows版の導入は[PC版のREADME](https://github.com/AoneSenbongi/Meltype/tree/google-native-ime)を参照してください。
+
+PC版と分離し、元のMeltypeからのGit履歴と著作権表記を引き継いだ独立リポジトリです。0.2.0の公開APKは分離前と同じファイルなので、リポジトリの分離だけを理由に再インストールする必要はありません。
 
 ## できること
 
@@ -12,7 +14,7 @@ QWERTYのローマ字入力で、日英自動判別とOSS版Mozcによるライ�
 
 対象はAndroid 8.0以降のarm64端末です。x86_64はエミュレーターの検証用です。
 
-1. [Android試作版0.2.0のRelease](https://github.com/AoneSenbongi/Meltype/releases/tag/android-prototype-0.2.0)から `Meltype-Android-prototype.apk` を端末へダウンロードします。
+1. [Android試作版0.2.0のRelease](https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-prototype-0.2.0)から `Meltype-Android-prototype.apk` を端末へダウンロードします。
 2. APKを開き、ダウンロードに使ったアプリからのインストールを許可します。
 3. Meltypeアプリを開き、「キーボードを有効にする」で有効にします。
 4. 「キーボードを選ぶ」でMeltypeを選び、アプリ内の試し書き欄で入力します。
@@ -23,7 +25,7 @@ QWERTYのローマ字入力で、日英自動判別とOSS版Mozcによるライ�
 
 0.2.0では専用アイコンと導入状態の表示を追加しました。SimejiのQWERTY配置を参考に英字3段と操作1段へ整理し、数字・記号は「123」で切り替えます。Shiftで大文字の表示になり、コンマを長押しするとピリオドを入力します。
 
-[ライブ候補と新しいキー配列の画面](https://github.com/AoneSenbongi/Meltype/releases/download/android-prototype-0.2.0/android-keyboard.png)を確認できます。
+[ライブ候補と新しいキー配列の画面](https://github.com/AoneSenbongi/Meltype-Android/releases/download/android-prototype-0.2.0/android-keyboard.png)を確認できます。
 
 本家Meltype 1.0.1の修正を取り込み、日英判別・句読点・モード切替・未確定文字の保持・取消・入力中の候補選択をテストしています。旧0.1.0は、本家1.0.1の取り込み前のAPKです。
 

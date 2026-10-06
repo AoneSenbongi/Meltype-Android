@@ -19,4 +19,4 @@ Meltypeを基にした非公式Androidキーボードの試作版0.2.0です。�
 
 入力処理のテスト、AndroidエミュレーターでのMozc接続と入力欄への表示・確定、実際のキー操作による日英混在・句読点・候補選択・日英切替・Shiftの表示を確認したAPKを公開します。画面は添付のPNGで確認できます。実機での入力速度、各アプリとの相性、画面回転、長時間入力は未確認です。
 
-[導入とソース](https://github.com/AoneSenbongi/Meltype/tree/android-prototype)。対応するソース、コミット情報、GPLと第三者ライセンス通知、テスト結果は配布ZIPに含めています。APK内の「ライセンス」からも通知を参照できます。
+[導入とソース](https://github.com/AoneSenbongi/Meltype-Android)。対応するソース、コミット情報、GPLと第三者ライセンス通知、テスト結果は配布ZIPに含めています。APK内の「ライセンス」からも通知を参照できます。
