@@ -20,3 +20,5 @@ mainのソースと0.2.0のReleaseを専用リポジトリへ公開済み。旧R
 ## 保存場所
 
 ソースは`E:/Prog/Meltype/Android/source`、ビルド環境はその親の`dotnet`・`android-sdk`・`jdk`・`nuget`、検証結果と配布物は`distribution`に置く。移動直後のビルド生成物には古い絶対パスが残るため、次のビルドでは新しいSDKとNuGetのパスを指定して復元する。
+
+README本文に導入画面・キー配列・変換候補・英語モードの画像を埋め込んだ。画像の原本は`docs/images`に保存し、Releaseの画像ファイルを開かなくても説明と一緒に表示する。

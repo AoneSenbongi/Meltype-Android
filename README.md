@@ -25,7 +25,15 @@ QWERTYのローマ字入力で、日英自動判別とOSS版Mozcによるライ�
 
 0.2.0では専用アイコンと導入状態の表示を追加しました。SimejiのQWERTY配置を参考に英字3段と操作1段へ整理し、数字・記号は「123」で切り替えます。Shiftで大文字の表示になり、コンマを長押しするとピリオドを入力します。
 
-[ライブ候補と新しいキー配列の画面](https://github.com/AoneSenbongi/Meltype-Android/releases/download/android-prototype-0.2.0/android-keyboard.png)を確認できます。
+### 画面
+
+| 導入画面 | ローマ字キーボード |
+| --- | --- |
+| <img src="docs/images/android-setup.png" alt="キーボードの有効化と選択を案内する導入画面" width="300"> | <img src="docs/images/android-keyboard.png" alt="QWERTY配列で日英混在の文字を入力する画面" width="300"> |
+
+| 変換候補 | 英語専用モード |
+| --- | --- |
+| <img src="docs/images/android-candidates.png" alt="入力中の変換候補を表示する画面" width="300"> | <img src="docs/images/android-english.png" alt="英語専用モードで英字を入力する画面" width="300"> |
 
 本家Meltype 1.0.1の修正を取り込み、日英判別・句読点・モード切替・未確定文字の保持・取消・入力中の候補選択をテストしています。旧0.1.0は、本家1.0.1の取り込み前のAPKです。
 
