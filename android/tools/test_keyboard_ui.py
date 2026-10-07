@@ -118,14 +118,10 @@ for letter in "warewarehautyuujinda":
     time.sleep(.04)
 tap(find("content-desc", "空白・変換"))
 tap(find("content-desc", "候補 0"))
-assert find("content-desc", "未確定文字").get("text") == "宇宙人だ", "Confirming first clause committed the suffix"
-import re
-preview = find("content-desc", "未確定文字")
-candidate = find("content-desc", "候補 0")
+assert find("resource-id", editor_id).get("text") == "我々は宇宙人だ", "Partial confirmation lost editor text"
+assert not any(node.get("content-desc") == "未確定文字" for node in tree().iter("node")), "Duplicate preedit row remains"
+assert not any("Meltype ·" in node.get("text", "") for node in tree().iter("node")), "Status header remains"
 assert not any(node.get("content-desc") == "キーボードを閉じる" for node in tree().iter("node")), "Hide button consumes candidate space"
-p = list(map(int, re.findall(r"\d+", preview.attrib["bounds"])))
-c = list(map(int, re.findall(r"\d+", candidate.attrib["bounds"])))
-assert p[3] <= c[1], "Preview overlaps candidate row"
 capture("android-partial-confirm.png")
 tap(find("content-desc", "数字・記号と英字配列を切り替える"))
 tap(find("content-desc", "「"))
@@ -146,6 +142,14 @@ after = find("resource-id", editor_id).get("text", "")
 assert len(before) - len(after) >= 3, "Held backspace did not repeat"
 time.sleep(.3)
 assert find("resource-id", editor_id).get("text", "") == after, "Deletion continued after release"
+tap(find("content-desc", "左へ移動"))
+tap(find("content-desc", "x"))
+expected = after[:-1] + "x" + after[-1:]
+assert find("resource-id", editor_id).get("text", "") == expected, "Empty composition left arrow did not move editor cursor"
+tap(find("content-desc", "右へ移動"))
+tap(find("content-desc", "y"))
+after = expected + "y"
+assert find("resource-id", editor_id).get("text", "") == after, "Right arrow did not move editor cursor"
 tap(find("content-desc", "キーボードを閉じる"))
 time.sleep(.3)
 assert find("resource-id", editor_id).get("text", "") == after, "Hiding keyboard changed entered text"

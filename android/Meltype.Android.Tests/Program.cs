@@ -2,6 +2,20 @@
 using Meltype.AndroidCore;
 using Meltype.Composition;
 
+var cursorOperations = new List<int>();
+var cursorSession = new AndroidInputSession(new FakeConverter(), _ => [], (operation, _, _) => cursorOperations.Add(operation));
+cursorSession.Key(0x25); cursorSession.Key(0x27);
+if (!cursorOperations.SequenceEqual(new[] { 5, 6 })) throw new Exception("Empty input arrows did not move the editor cursor.");
+cursorOperations.Clear();
+foreach (var c in "nihongo") cursorSession.Character(c);
+cursorOperations.Clear(); cursorSession.Key(0x25); cursorSession.Key(0x27);
+if (cursorOperations.Any(operation => operation is 5 or 6)) throw new Exception("Pending composition arrows moved the editor cursor.");
+cursorSession.Commit(); cursorOperations.Clear(); cursorSession.Key(0x25);
+if (!cursorOperations.SequenceEqual(new[] { 5 })) throw new Exception("Confirmed input arrow did not move the editor cursor.");
+cursorSession.SetEnglish(true); cursorOperations.Clear(); cursorSession.Key(0x27);
+if (!cursorOperations.SequenceEqual(new[] { 6 })) throw new Exception("English arrow did not move the editor cursor.");
+Console.WriteLine("PASS: editor arrows before input, after confirmation and in English; composition arrows stay internal");
+
 var converter = new FakeConverter();
 var document = "";
 var preedit = "";

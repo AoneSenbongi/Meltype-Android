@@ -53,6 +53,10 @@ public sealed class AndroidInputSession : ICompositionHost
 
     public void Key(int code, char? character = null)
     {
+        if (code is 0x25 or 0x27 && string.IsNullOrEmpty(View?.Text))
+        {
+            _output(code == 0x25 ? 5 : 6, "", null); return;
+        }
         if (!_english && code == 0x0D && View is { Converting: true })
         {
             _controller.CommitSelectedPrefix(); return;

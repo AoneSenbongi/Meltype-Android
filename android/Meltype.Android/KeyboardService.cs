@@ -8,6 +8,7 @@ using Android.Text;
 using Android.Views;
 using Android.Views.InputMethods;
 using Android.Widget;
+using Keycode = Android.Views.Keycode;
 using Meltype.AndroidCore;
 using Meltype.Composition;
 
@@ -22,8 +23,6 @@ public sealed class KeyboardService : InputMethodService
     private Handler? _worker, _main;
     private AndroidInputSession? _session;
     private LinearLayout? _candidates;
-    private TextView? _status;
-    private TextView? _preedit;
     private string? _candidateSignature;
     private readonly List<KeyTouch> _touches = [];
     private Button? _mode;
@@ -51,7 +50,7 @@ public sealed class KeyboardService : InputMethodService
                 _session = new AndroidInputSession(mozc, mozc.Candidates, Output);
                 _main.Post(() => { _ready = true; Status(); });
             }
-            catch (Exception) { _main.Post(() => { if (_status != null) _status.Text = "変換エンジンを起動できません。入力方法を切り替えてください。"; }); }
+            catch (Exception) { _main.Post(() => Toast.MakeText(this, "変換エンジンを起動できません。入力方法を切り替えてください。", ToastLength.Long)!.Show()); }
         });
     }
     public override View OnCreateInputView()
@@ -59,20 +58,8 @@ public sealed class KeyboardService : InputMethodService
         _letters.Clear();
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetBackgroundColor(MobileStyle.KeyboardBackground);
-        root.SetPadding(Dp(4), Dp(4), Dp(4), Dp(6));
-        root.SetOnApplyWindowInsetsListener(new KeyboardInsets(Dp(6)));
-        var header = new LinearLayout(this); header.SetGravity(GravityFlags.CenterVertical);
-        _status = new TextView(this) { TextSize = 11 };
-        _status.SetTextColor(MobileStyle.Muted); _status.SetPadding(Dp(8), Dp(2), Dp(8), Dp(2));
-        header.AddView(_status, new LinearLayout.LayoutParams(0, Dp(28), 1));
-        var picker = new Button(this) { Text = "⌨", TextSize = 18, ContentDescription = "他のキーボードを選ぶ" };
-        MobileStyle.Button(picker); picker.SetPadding(0, 0, 0, 0);
-        picker.Click += (_, _) => ((InputMethodManager)GetSystemService(InputMethodService)!).ShowInputMethodPicker();
-        header.AddView(picker, new LinearLayout.LayoutParams(Dp(40), Dp(28))); root.AddView(header);
-        _preedit = new TextView(this) { TextSize = 16, Gravity = GravityFlags.CenterVertical, ContentDescription = "未確定文字" };
-        _preedit.SetTextColor(MobileStyle.Ink); _preedit.SetSingleLine(true);
-        _preedit.SetPadding(Dp(8), 0, Dp(8), 0);
-        root.AddView(_preedit, new LinearLayout.LayoutParams(-1, Dp(32)));
+        root.SetPadding(Dp(4), 0, Dp(4), Dp(24));
+        root.SetOnApplyWindowInsetsListener(new KeyboardInsets(Dp(24)));
         _candidateSignature = null;
         var scroll = new HorizontalScrollView(this) { HorizontalScrollBarEnabled = false };
         _candidates = new LinearLayout(this) { Orientation = Orientation.Horizontal };
@@ -164,7 +151,7 @@ public sealed class KeyboardService : InputMethodService
         _restricted = inputClass is InputTypes.ClassNumber or InputTypes.ClassPhone or InputTypes.ClassDatetime ||
             variation is InputTypes.TextVariationPassword or InputTypes.TextVariationVisiblePassword or InputTypes.TextVariationWebPassword;
         _candidates?.RemoveAllViews();
-        _candidateSignature = null; if (_preedit != null) _preedit.Text = "";
+        _candidateSignature = null;
         if (_hide != null) _hide.Visibility = ViewStates.Visible;
         var english = _english;
         _worker?.Post(() => { _session?.Reset(); _session?.SetEnglish(english); }); Status();
@@ -177,7 +164,7 @@ public sealed class KeyboardService : InputMethodService
         Interlocked.Increment(ref _generation);
         _worker?.Post(() => _session?.Reset());
         _candidates?.RemoveAllViews(); base.OnFinishInput();
-        _candidateSignature = null; if (_preedit != null) _preedit.Text = "";
+        _candidateSignature = null;
     }
     public override void OnFinishInputView(bool finishingInput)
     {
@@ -192,7 +179,7 @@ public sealed class KeyboardService : InputMethodService
             _preeditActive = false;
             Interlocked.Increment(ref _generation);
             _worker?.Post(() => _session?.Reset()); _candidates?.RemoveAllViews();
-            CancelTouches(); _candidateSignature = null; if (_preedit != null) _preedit.Text = "";
+            CancelTouches(); _candidateSignature = null;
         }
     }
     private void Input(char c)
@@ -206,6 +193,7 @@ public sealed class KeyboardService : InputMethodService
         {
             if (key == 0x08) CurrentInputConnection?.DeleteSurroundingTextInCodePoints(1, 0);
             else if (key == 0x0D) Enter();
+            else if (key is 0x25 or 0x27) MoveCursor(key == 0x25 ? Keycode.DpadLeft : Keycode.DpadRight);
             return;
         }
         Queue(() => _session?.Key(key));
@@ -236,7 +224,7 @@ public sealed class KeyboardService : InputMethodService
             }
             else if (operation == 3) editor.DeleteSurroundingTextInCodePoints(int.Parse(text), 0);
             else if (operation == 4) Enter();
-            if (_preedit != null) _preedit.Text = view?.Text ?? "";
+            else if (operation is 5 or 6) MoveCursor(operation == 5 ? Keycode.DpadLeft : Keycode.DpadRight);
             if (_hide != null) _hide.Visibility = view is { Candidates.Count: > 0 } ? ViewStates.Gone : ViewStates.Visible;
             var signature = view == null ? "" : string.Join('\0', view.Candidates.Take(24)) + "\u0001" + view.SelectedIndex;
             if (_candidateSignature == signature) return;
@@ -252,6 +240,14 @@ public sealed class KeyboardService : InputMethodService
                 }
         });
     }
+    private void MoveCursor(Keycode code)
+    {
+        var editor = CurrentInputConnection;
+        if (editor == null) return;
+        using var down = new global::Android.Views.KeyEvent(KeyEventActions.Down, code);
+        using var up = new global::Android.Views.KeyEvent(KeyEventActions.Up, code);
+        editor.SendKeyEvent(down); editor.SendKeyEvent(up);
+    }
     private void Enter() { if (!SendDefaultEditorAction(true)) CurrentInputConnection?.CommitText("\n", 1); }
     private void HideKeyboard()
     {
@@ -266,7 +262,6 @@ public sealed class KeyboardService : InputMethodService
     }
     private void Status()
     {
-        if (_status != null) _status.Text = !_ready ? "変換エンジンを準備中…" : _restricted ? "直接入力" : "Meltype · " + (_english ? "ABC" : "日英自動判別") + (_caps ? " · Shift" : "");
         if (_mode != null)
         {
             _mode.Text = _restricted || _english ? "ABC" : "日英";
