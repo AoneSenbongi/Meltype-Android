@@ -1,8 +1,8 @@
 # Meltype Androidのセキュリティと入力データの扱い
 
-対象はAoneSenbongi/Meltype-Androidの試作版0.2.0、0.3.0と、公開準備中の0.4.0です。雪代／Yukishiro氏のMeltypeを基にした非公式Androidキーボードで、元作者やGoogleの公式配布版ではありません。PC版の説明は[PC版のセキュリティ文書](https://github.com/AoneSenbongi/Meltype/blob/google-native-ime/SECURITY.md)を参照してください。
+対象はAoneSenbongi/Meltype-Androidの試作版0.2.0、0.3.0、0.4.0、0.4.1です。雪代／Yukishiro氏のMeltypeを基にした非公式Androidキーボードで、元作者やGoogleの公式配布版ではありません。PC版の説明は[PC版のセキュリティ文書](https://github.com/AoneSenbongi/Meltype/blob/google-native-ime/SECURITY.md)を参照してください。
 
-以下は0.2.0の公開ソース、0.3.0の公開ソースと0.4.0の配布予定ソースとAPKのManifestを確認した説明です。第三者によるセキュリティ監査の結果や安全性の保証ではありません。
+以下は0.2.0の公開ソース、0.3.0・0.4.0の公開ソースと0.4.1の配布候補ソースとAPKのManifestを確認した説明です。第三者によるセキュリティ監査の結果や安全性の保証ではありません。
 
 ## Androidの入力データ
 
