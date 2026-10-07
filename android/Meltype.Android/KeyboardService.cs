@@ -90,19 +90,19 @@ public sealed class KeyboardService : InputMethodService
         _letters.Clear();
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetBackgroundColor(MobileStyle.KeyboardBackground);
-        root.SetPadding(Dp(4), 0, Dp(4), Dp(24));
+        root.SetPadding(0, 0, 0, Dp(24));
         root.SetOnApplyWindowInsetsListener(new KeyboardInsets(Dp(24)));
         _candidateSignature = null;
         var scroll = new HorizontalScrollView(this) { HorizontalScrollBarEnabled = false };
         _candidates = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         _candidates.SetGravity(GravityFlags.CenterVertical); scroll.AddView(_candidates);
-        scroll.Background = MobileStyle.Rounded(this, Color.White);
-        var candidateRow = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+        scroll.SetBackgroundColor(Color.White);
+        var candidateRow = new LinearLayout(this) { Orientation = Orientation.Horizontal, BaselineAligned = false };
         candidateRow.AddView(scroll, new LinearLayout.LayoutParams(0, Dp(42), 1));
         _hide = new Button(this) { Text = "⌄", TextSize = 24, ContentDescription = "キーボードを閉じる" };
-        MobileStyle.Button(_hide); _hide.Click += (_, _) => HideKeyboard();
+        MobileStyle.KeyboardKey(_hide); _hide.Click += (_, _) => HideKeyboard();
         candidateRow.AddView(_hide, new LinearLayout.LayoutParams(Dp(44), Dp(42)));
-        root.AddView(candidateRow, new LinearLayout.LayoutParams(-1, Dp(42)) { BottomMargin = Dp(4) });
+        root.AddView(candidateRow, new LinearLayout.LayoutParams(-1, Dp(42)));
         _keyRows = new LinearLayout(this) { Orientation = Orientation.Vertical }; root.AddView(_keyRows);
         BuildKeyRows(); Status(); return root;
     }
@@ -114,7 +114,7 @@ public sealed class KeyboardService : InputMethodService
         _keyRows.RemoveAllViews(); _letters.Clear(); _shift = null;
         foreach (var row in _symbols ? new[] { "1234567890", "@#¥%&-+()/", "「」.,?!:;\"" } : new[] { "qwertyuiop", "asdfghjkl-", "zxcvbnm" })
         {
-            var line = new LinearLayout(this);
+            var line = new LinearLayout(this) { BaselineAligned = false };
             var shortRow = row.Length == 7;
             if (shortRow)
             {
@@ -130,7 +130,7 @@ public sealed class KeyboardService : InputMethodService
             else if (_symbols && row.StartsWith('「')) AddKey(line, "⌫", () => Special(0x08), description: "削除、長押しで連続削除", repeat: true);
             _keyRows.AddView(line);
         }
-        var controls = new LinearLayout(this);
+        var controls = new LinearLayout(this) { BaselineAligned = false };
         AddKey(controls, _symbols ? "ABC" : "123", () => { _symbols = !_symbols; BuildKeyRows(); Status(); }, description: "数字・記号と英字配列を切り替える");
         _mode = AddKey(controls, "日英", () =>
         {
@@ -148,17 +148,15 @@ public sealed class KeyboardService : InputMethodService
         AddKey(controls, "空白", () => Input(' '), 3, description: "空白・変換");
         AddKey(controls, "←", () => Special(0x25), description: "左へ移動");
         AddKey(controls, "→", () => Special(0x27), description: "右へ移動");
-        var enter = AddKey(controls, "↵", () => Special(0x0D), 2, description: "確定・改行"); MobileStyle.Button(enter, true); _keyRows.AddView(controls);
+        AddKey(controls, "↵", () => Special(0x0D), 2, description: "確定・改行"); _keyRows.AddView(controls);
     }
     private int Dp(int pixels) => MobileStyle.Dp(this, pixels);
     private Button AddKey(LinearLayout row, string label, Action action, float weight = 1, int height = 54, string? description = null, bool repeat = false)
     {
         var key = new Button(this) { Text = label, TextSize = label.Length > 1 ? 13 : 20, ContentDescription = description ?? label };
         key.SetSingleLine(true);
-        MobileStyle.Button(key); key.SetPadding(0, 0, 0, 0); Action invoke = () => { action(); if (label != "⇧") { _shiftState.Reset(); Status(); } };
+        MobileStyle.KeyboardKey(key); Action invoke = () => { action(); if (label != "⇧") { _shiftState.Reset(); Status(); } };
         key.Click += (_, _) => invoke();
-        // Keep visual spacing inside the drawable, so gaps still belong to a key.
-        key.Background = new global::Android.Graphics.Drawables.InsetDrawable(key.Background!, Dp(1));
         if (label != ",")
         {
             var touch = new KeyTouch(_main!, invoke, repeat);
@@ -307,7 +305,9 @@ public sealed class KeyboardService : InputMethodService
                 for (var i = 0; i < Math.Min(view.Candidates.Count, 24); i++)
                 {
                     var index = i; var button = new Button(this) { Text = view.Candidates[index], ContentDescription = "候補 " + index };
-                    MobileStyle.Button(button); button.TextSize = 17;
+                    MobileStyle.KeyboardKey(button); button.TextSize = 17;
+                    button.SetPadding(Dp(12), 0, Dp(12), 0);
+                    button.SetTypeface(null, index == view.SelectedIndex ? TypefaceStyle.Bold : TypefaceStyle.Normal);
                     button.Click += (_, _) =>
                     {
 #if TRAINING_BUILD
@@ -315,7 +315,7 @@ public sealed class KeyboardService : InputMethodService
 #endif
                         _shiftState.Reset(); Status(); Queue(() => _session?.Select(index));
                     };
-                    _candidates.AddView(button, new LinearLayout.LayoutParams(-2, Dp(38)) { MarginStart = Dp(4), MarginEnd = Dp(4) });
+                    _candidates.AddView(button, new LinearLayout.LayoutParams(-2, Dp(42)));
                 }
         });
     }
@@ -360,10 +360,9 @@ public sealed class KeyboardService : InputMethodService
             _mode.Text = _restricted || _english ? "ABC" : "日英";
             _mode.ContentDescription = _english ? "日英自動判別に戻る" : "英語専用モードに切り替える";
             _mode.Enabled = _ready && !_restricted;
-            _mode.Background = MobileStyle.Rounded(this, _english ? MobileStyle.Soft : Color.White);
         }
         foreach (var (key, letter) in _letters) key.Text = (_shiftState.Active ? char.ToUpperInvariant(letter) : letter).ToString();
-        if (_shift != null) _shift.Background = MobileStyle.Rounded(this, _shiftState.Active ? MobileStyle.Soft : Color.White);
+        if (_shift != null) _shift.SetTypeface(null, _shiftState.Active ? TypefaceStyle.Bold : TypefaceStyle.Normal);
     }
     public override void OnDestroy()
     {
