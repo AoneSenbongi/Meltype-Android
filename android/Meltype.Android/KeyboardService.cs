@@ -182,9 +182,12 @@ public sealed class KeyboardService : InputMethodService
         if (hint != null)
         {
             var frame = new FrameLayout(this); frame.AddView(key, new FrameLayout.LayoutParams(-1,-1));
-            var mark = new TextView(this) { Text = hint, TextSize = 10, Gravity = GravityFlags.Top | GravityFlags.Right, ImportantForAccessibility = ImportantForAccessibility.No };
-            mark.SetTextColor(MobileStyle.Muted); mark.SetPadding(0,Dp(2),Dp(4),0);
-            frame.AddView(mark, new FrameLayout.LayoutParams(-1,-2)); cell = frame;
+            var mark = new TextView(this) { Text = hint, TextSize = 11,
+                Gravity = GravityFlags.Top | GravityFlags.Right, ImportantForAccessibility = ImportantForAccessibility.No,
+                Clickable = false, Focusable = false };
+            mark.SetIncludeFontPadding(false); mark.SetTextColor(MobileStyle.Muted);
+            frame.AddView(mark, new FrameLayout.LayoutParams(Dp(24), Dp(18), GravityFlags.Top | GravityFlags.Right)
+                { TopMargin = Dp(4), RightMargin = Dp(4) }); cell = frame;
         }
         row.AddView(cell, new LinearLayout.LayoutParams(0, Dp(height), weight)); return key;
     }
