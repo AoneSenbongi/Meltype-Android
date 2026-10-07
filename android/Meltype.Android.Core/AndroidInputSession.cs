@@ -19,14 +19,16 @@ public sealed class AndroidInputSession : ICompositionHost
     public CompositionView? View { get; private set; }
 
     public AndroidInputSession(IKanjiConverter converter, Func<string, IReadOnlyList<string>> candidates,
-        Action<int, string, CompositionView?> output, Func<InputPreferences>? preferences = null, bool learningAllowed = true)
+        Action<int, string, CompositionView?> output, Func<InputPreferences>? preferences = null, bool learningAllowed = true,
+        AndroidUserDictionary? userDictionary = null)
     {
         _output = output;
         preferences ??= () => new InputPreferences();
         _controller = new CompositionController(_gate, CompositionDetector.CreateDefault(), converter, this,
             new CompositionOptions { FullWidthCommaPeriod = true, Comma = () => preferences().Comma[0],
                 Period = () => preferences().Period[0], LearningEnabled = () => learningAllowed && preferences().LearningEnabled, LiveConversion = () => true,
-                MoreCandidates = candidates, AutoCorrect = () => false });
+                UserDictionary = userDictionary?.CompositionDictionary,
+                MoreCandidates = reading => (userDictionary?.Lookup(reading) ?? []).Concat(candidates(reading)).Distinct().ToArray(), AutoCorrect = () => false });
     }
 
     public void SetEnglish(bool english)

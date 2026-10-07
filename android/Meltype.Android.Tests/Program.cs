@@ -2,8 +2,17 @@
 using Meltype.AndroidCore;
 using Meltype.Composition;
 
+if (args is ["--import-dictionary", var source, var target])
+{
+    var store = new AndroidUserDictionary(target);
+    var result = store.Import(File.ReadAllBytes(source));
+    Console.WriteLine($"Imported: {result.Added}, skipped: {result.Skipped}, total: {store.Count}");
+    return;
+}
+
 TypoTrainingTests.Run();
 InputSettingTests.Run();
+UserDictionaryTests.Run();
 
 var cursorOperations = new List<int>();
 var cursorSession = new AndroidInputSession(new FakeConverter(), _ => [], (operation, _, _) => cursorOperations.Add(operation));

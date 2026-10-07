@@ -13,6 +13,7 @@ using Android.Views.InputMethods;
 using Android.Widget;
 using Meltype.AndroidCore;
 using Meltype.Config;
+using System.Text;
 
 namespace Meltype.Mobile;
 
@@ -25,10 +26,14 @@ public sealed class MainActivity : Activity
 {
     private TextView? _setupStatus;
     private Action? _refreshPreferences;
+    private TextView? _dictionaryStatus;
+    private string DictionaryPath => Path.Combine(FilesDir!.AbsolutePath, "user-dictionary.json");
     private int Dp(float value) => MobileStyle.Dp(this, value);
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        Window!.SetSoftInputMode(SoftInput.AdjustResize);
+        if (OperatingSystem.IsAndroidVersionAtLeast(30) && !OperatingSystem.IsAndroidVersionAtLeast(35)) Window.SetDecorFitsSystemWindows(false);
         var layout = new LinearLayout(this) { Orientation = Orientation.Vertical };
         layout.SetPadding(Dp(24), Dp(28), Dp(24), Dp(24));
         layout.SetBackgroundColor(MobileStyle.Background);
@@ -54,6 +59,9 @@ public sealed class MainActivity : Activity
         }
         Add("1. キーボードを有効にする", () => StartActivity(new Intent(Settings.ActionInputMethodSettings)), true);
         Add("2. キーボードを選ぶ", () => ((InputMethodManager)GetSystemService(InputMethodService)!).ShowInputMethodPicker());
+        _dictionaryStatus = Label("", 14, MobileStyle.Muted); layout.AddView(_dictionaryStatus);
+        RefreshDictionary();
+        Add("ユーザー辞書 · 登録／取り込み", ShowDictionary);
         var preferences = new InputPreferenceStore(Path.Combine(FilesDir!.AbsolutePath, "input-preferences.json"));
         layout.AddView(Label("日本語入力の句読点", 16, MobileStyle.Ink));
         Spinner Choice(string title, string[] values)
@@ -150,8 +158,75 @@ public sealed class MainActivity : Activity
         var version = PackageManager?.GetPackageInfo(PackageName!, (global::Android.Content.PM.PackageInfoFlags)0)?.VersionName;
         var about = Label($"Android試作版 {version}\n雪代／Yukishiro氏のMeltypeを基にした非公式Forkです。変換にはOSS版Mozcを使用し、入力は端末内で処理します。", 12, MobileStyle.Muted);
         about.SetPadding(0, Dp(18), 0, 0); layout.AddView(about);
-        var page = new ScrollView(this) { FillViewport = true }; page.AddView(layout); SetContentView(page);
+        var page = new ScrollView(this) { FillViewport = true }; page.AddView(layout);
+        var frame = new FrameLayout(this); frame.AddView(page, new FrameLayout.LayoutParams(-1, -1));
+        void ScrollEditor() { if (editor.HasFocus) page.Post(() => page.SmoothScrollTo(0, Math.Max(0, editor.Top - Dp(16)))); }
+        editor.FocusChange += (_, e) => { if (e.HasFocus) page.PostDelayed(ScrollEditor, 200); };
+        frame.SetOnApplyWindowInsetsListener(new SetupInsets(Dp(12), ScrollEditor));
+        SetContentView(frame); frame.RequestApplyInsets();
         if (Intent?.GetBooleanExtra("selftest", false) == true) RunSelfTest(editor);
+    }
+    private sealed class SetupInsets(int gap, Action scroll) : Java.Lang.Object, View.IOnApplyWindowInsetsListener
+    {
+        public WindowInsets OnApplyWindowInsets(View? view, WindowInsets? insets)
+        {
+            if (view == null || insets == null) throw new ArgumentNullException();
+            if (OperatingSystem.IsAndroidVersionAtLeast(30))
+            {
+                var bars = insets.GetInsets(WindowInsets.Type.SystemBars() | WindowInsets.Type.DisplayCutout())!;
+                var keyboard = insets.GetInsets(WindowInsets.Type.Ime())!;
+                view.SetPadding(bars.Left, bars.Top + gap, bars.Right, Math.Max(bars.Bottom, keyboard.Bottom) + gap);
+            }
+            else view.SetPadding(insets.SystemWindowInsetLeft, insets.SystemWindowInsetTop + gap, insets.SystemWindowInsetRight, insets.SystemWindowInsetBottom + gap);
+            view.Post(scroll); return insets;
+        }
+    }
+    private void RefreshDictionary()
+    {
+        try { if (_dictionaryStatus != null) _dictionaryStatus.Text = $"ユーザー辞書 · {new AndroidUserDictionary(DictionaryPath).Count}件"; }
+        catch (Exception ex) when (ex is IOException or DecoderFallbackException) { if (_dictionaryStatus != null) _dictionaryStatus.Text = "辞書を読めません。取り込み元を確認してください。"; }
+    }
+    private void ShowDictionary()
+    {
+        var fields = new LinearLayout(this) { Orientation = Orientation.Vertical }; fields.SetPadding(Dp(20), Dp(12), Dp(20), Dp(12));
+        var reading = new EditText(this) { Hint = "読み（かな・英数字）", InputType = InputTypes.ClassText, ImeOptions = (ImeAction)0x1000000 };
+        var word = new EditText(this) { Hint = "登録する単語・定型文", InputType = InputTypes.ClassText | InputTypes.TextFlagMultiLine, ImeOptions = (ImeAction)0x1000000 };
+        reading.SetSingleLine(true); fields.AddView(reading); fields.AddView(word, new LinearLayout.LayoutParams(-1, Dp(96)));
+        fields.AddView(Label("1文字の読みは候補のみ。既存の単語は保持します。", 12, MobileStyle.Muted));
+        var register = new Button(this) { Text = "単語を登録" }; MobileStyle.Button(register); fields.AddView(register);
+        register.Click += (_, _) =>
+        {
+            try
+            {
+                var added = new AndroidUserDictionary(DictionaryPath).Add(reading.Text ?? "", word.Text ?? "");
+                RefreshDictionary(); Toast.MakeText(this, added == 0 ? "同じ単語は登録済みです。" : "登録しました。次の入力から反映します。", ToastLength.Short)!.Show();
+                reading.Text = ""; word.Text = "";
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { Toast.MakeText(this, ex is InvalidDataException ? ex.Message : "辞書を保存できません。空き容量を確認してください。", ToastLength.Long)!.Show(); }
+        };
+        using var dialog = new AlertDialog.Builder(this);
+        dialog.SetTitle("ユーザー辞書"); dialog.SetView(fields);
+        dialog.SetNeutralButton("ファイルを取り込む", (_, _) =>
+        {
+            var intent = new Intent(Intent.ActionOpenDocument); intent.SetType("*/*"); intent.AddCategory(Intent.CategoryOpenable);
+            StartActivityForResult(intent, 501);
+        });
+        dialog.SetPositiveButton("閉じる", (_, _) => { }); dialog.Show();
+    }
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        if (requestCode != 501 || resultCode != Result.Ok || data?.Data == null) return;
+        try
+        {
+            using var input = ContentResolver!.OpenInputStream(data.Data)!;
+            using var buffer = new MemoryStream(); var chunk = new byte[8192]; int count;
+            while ((count = input.Read(chunk, 0, chunk.Length)) > 0) { buffer.Write(chunk, 0, count); if (buffer.Length > 1_000_000) throw new InvalidDataException("辞書ファイルは1MBまでです。"); }
+            var result = new AndroidUserDictionary(DictionaryPath).Import(buffer.ToArray()); RefreshDictionary();
+            Toast.MakeText(this, $"{result.Added}件登録しました。取り込めない項目は{result.Skipped}件です。", ToastLength.Long)!.Show();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DecoderFallbackException)
+        { Toast.MakeText(this, ex is InvalidDataException ? ex.Message : "辞書を読めません。UTF-8／UTF-16の辞書を選んでください。", ToastLength.Long)!.Show(); }
     }
     private TextView Label(string text, int size, Color color)
     {

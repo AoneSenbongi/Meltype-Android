@@ -9,6 +9,7 @@ using Android.Views;
 using Android.Views.InputMethods;
 using Android.Widget;
 using Keycode = Android.Views.Keycode;
+using Path = System.IO.Path;
 using Meltype.AndroidCore;
 using Meltype.Composition;
 using Meltype.Config;
@@ -79,7 +80,8 @@ public sealed class KeyboardService : InputMethodService
             {
                 var mozc = MozcJniBridge.Create(this);
                 mozc.LearningEnabled = () => _preferences.Current.LearningEnabled;
-                _session = new AndroidInputSession(mozc, mozc.Candidates, Output, () => _preferences.Current);
+                _session = new AndroidInputSession(mozc, mozc.Candidates, Output, () => _preferences.Current,
+                    userDictionary: new AndroidUserDictionary(Path.Combine(FilesDir!.AbsolutePath, "user-dictionary.json")));
                 _main.Post(() => { _ready = true; Status(); });
             }
             catch (Exception) { _main.Post(() => Toast.MakeText(this, "変換エンジンを起動できません。入力方法を切り替えてください。", ToastLength.Long)!.Show()); }
@@ -100,7 +102,7 @@ public sealed class KeyboardService : InputMethodService
         var candidateRow = new LinearLayout(this) { Orientation = Orientation.Horizontal, BaselineAligned = false };
         candidateRow.AddView(scroll, new LinearLayout.LayoutParams(0, Dp(42), 1));
         _hide = new Button(this) { Text = "⌄", TextSize = 24, ContentDescription = "キーボードを閉じる" };
-        MobileStyle.KeyboardKey(_hide); _hide.Click += (_, _) => HideKeyboard();
+        MobileStyle.KeyboardKey(_hide, function: true); _hide.Click += (_, _) => HideKeyboard();
         candidateRow.AddView(_hide, new LinearLayout.LayoutParams(Dp(44), Dp(42)));
         root.AddView(candidateRow, new LinearLayout.LayoutParams(-1, Dp(42)));
         _keyRows = new LinearLayout(this) { Orientation = Orientation.Vertical }; root.AddView(_keyRows);
@@ -155,7 +157,7 @@ public sealed class KeyboardService : InputMethodService
     {
         var key = new Button(this) { Text = label, TextSize = label.Length > 1 ? 13 : 20, ContentDescription = description ?? label };
         key.SetSingleLine(true);
-        MobileStyle.KeyboardKey(key); Action invoke = () => { action(); if (label != "⇧") { _shiftState.Reset(); Status(); } };
+        MobileStyle.KeyboardKey(key, function: label.Length > 1 || label is "⇧" or "⌫" or "↵" or "←" or "→"); Action invoke = () => { action(); if (label != "⇧") { _shiftState.Reset(); Status(); } };
         key.Click += (_, _) => invoke();
         if (label != ",")
         {
@@ -191,7 +193,8 @@ public sealed class KeyboardService : InputMethodService
             // Fixed policy per editor: an asynchronous learn operation cannot inherit another field's policy.
             var mozc = MozcJniBridge.Create(this, learning: allowLearning);
             mozc.LearningEnabled = () => _preferences!.Current.LearningEnabled;
-            _session = new AndroidInputSession(mozc, mozc.Candidates, Output, () => _preferences!.Current, allowLearning);
+            _session = new AndroidInputSession(mozc, mozc.Candidates, Output, () => _preferences!.Current, allowLearning,
+                new AndroidUserDictionary(Path.Combine(FilesDir!.AbsolutePath, "user-dictionary.json")));
             _session.SetEnglish(english);
         }); Status();
     }
