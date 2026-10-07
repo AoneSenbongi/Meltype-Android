@@ -36,7 +36,7 @@ GitHub Actionsの`Android prototype`をこの専用リポジトリの`main`ブ�
 
 ## 導入
 
-1. [Android試作版0.2.0のRelease](https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-prototype-0.2.0)から`Meltype-Android-prototype.apk`をAndroidへダウンロードする。APKを開いたアプリに対してインストールを許可する。
+1. [Android試作版0.4.0のRelease](https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-prototype-0.4.0)から`Meltype-Android-0.4.0.apk`をAndroidへダウンロードする。APKを開いたアプリに対してインストールを許可する。
 2. Meltypeのアプリを開き、「キーボードを有効にする」からMeltypeを有効にする。
 3. 「キーボードを選ぶ」でMeltypeを選択する。
 4. アプリ内の試し書き欄で`kyouhagoogledekensaku`を入力する。
@@ -55,7 +55,7 @@ APKのビルドと日英切替などの入力テストが通った。Android 15�
 
 MeltypeのGPLと元作者の表記を維持する。Mozcと同梱辞書・依存ライブラリの通知はアプリ内のライセンス画面と配布物へ含める。
 
-## 次のUI修正（未公開）
+## 0.4.0のUI修正（公開準備中）
 
 上部の状態表示、入力方法選択ボタン、重複する未確定文字の表示欄を削除する。候補欄は残す。下部の余白は24dpにナビゲーションバーのInsetを加えて確保し、Androidの入力方法切替ボタンとキーが重ならないようにする。未確定文字がないときの左右矢印は入力先へDPADの押下・解放を送る。入力中の読み・文節移動は維持する。英語専用モードと直接入力欄でも左右移動を使える。
 

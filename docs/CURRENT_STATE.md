@@ -52,3 +52,7 @@ READMEとSECURITYを0.3.0の実装に照合した。Androidのキーボード有
 2026年10月7日、記号と長押し削除の項目分離、句読点説明の短縮を反映し、ユーザーの「じゃあそれで」を受けて公開した。公開先は https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-prototype-0.3.0 。Pre-release=true、draft=false。専用mainとReleaseタグのソースはaf574ac3eea1ce6fe5ca58cb035eccf197f86693。公開本文が承認したファイルと同一で、APK・ハッシュ・ソースZIP・版情報・GPL・第三者通知・変更説明・README・SECURITYの9ファイルはGitHubのsizeとSHA-256 digestがローカルと一致した。APKのSHA-256はA8C01AED6BDC6CCCA943378274E215BF1EFE801F907FAD12FE0C10E15879E06A。残作業は新しいUIの実機試験、継続的な配布署名の整備、学習停止設定と入力先の学習禁止フラグ対応。旧0.2.0からの再インストールでは学習データが消えることをREADME・SECURITY・Releaseへ明記済み。公開後の状態更新はローカルのみで追加pushしない。
 
 画面修正版のAPKビルドは警告・エラーなしで成功した。未公開APKは E:/Prog/Meltype/Android/distribution/0.3.0-ui-local/Meltype-Android-0.3.0-ui-local.apk、SHA-256は ABB96BFBDAD4AD87991696A2B30A12A8FAA15481D6CE30E18E7141683B6DB0B7。版番号は公開0.3.0のままのローカル試験用。次回公開時に新しい版番号を設定して再ビルドする。
+
+次の公開対象は先ほどの画面整理・下部余白・空入力時の矢印移動のみ。ユーザー指定により版番号は0.4.0、versionCodeは4とする。本家1.0.3とフリックは含めない。README・SECURITY・公開文を更新し、公開内容の確認前にAPKと配布物を準備する。まだpush・Releaseは実行しない。
+
+0.4.0のAPKビルドは警告・エラーなしで成功。ManifestのversionName=0.4.0、versionCode=4と権限宣言なしを確認した。apksignerで公開0.3.0と同じ証明書8c07ff326f7b51c1c7ee6e1cd36156999af93c3c0e308e782dc747a41abce281を確認。APKのSHA-256は9B854A4247C56C72400F16DED8382368C384588D9F52C32535868257C0C40338。公開文はdocs/ANDROID_RELEASE_0_4_0.md、配布準備先はE:/Prog/Meltype/Android/distribution/0.4.0-publish。ユーザーの文言・添付確認待ち。
