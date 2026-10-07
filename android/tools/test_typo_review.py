@@ -45,6 +45,28 @@ class Tests(unittest.TestCase):
         self.assertEqual(reopened.export(), 1)
         self.assertEqual(len(json.loads((pathlib.Path(self.temp.name) / "confirmed-typos.json").read_text(encoding="utf-8"))), 1)
 
+    def test_punctuation_separate_from_typo_export(self):
+        data = json.dumps(dict(id=str(uuid.uuid4()), day="2026-10-08", before="文章です", after="．", kind="punctuation")).encode()+b"\n"
+        self.assertEqual(self.store.import_bytes(data), 1)
+        row = self.store.rows()[0]
+        self.assertEqual(row["kind"], "punctuation")
+        self.store.label(row["pair"], "typo")
+        self.assertEqual(self.store.export(), 0)
+        self.assertEqual(ReviewStore(self.temp.name).rows()[0]["label"], "typo")
+
+    def test_legacy_database_migration_retains_labels(self):
+        import sqlite3
+        self.store.import_bytes(record())
+        pair = self.store.rows()[0]["pair"]
+        self.store.label(pair, "not_typo")
+        import contextlib
+        with contextlib.closing(sqlite3.connect(self.store.db)) as db:
+            db.executescript("CREATE TABLE old_edits(id TEXT PRIMARY KEY,pair TEXT,day TEXT,before TEXT,after TEXT); INSERT INTO old_edits SELECT id,pair,day,before,after FROM edits; DROP TABLE edits; ALTER TABLE old_edits RENAME TO edits;")
+            db.commit()
+        reopened = ReviewStore(self.temp.name)
+        self.assertEqual(reopened.rows()[0]["label"], "not_typo")
+        self.assertEqual(reopened.rows()[0]["kind"], "edit")
+
     def test_usb_only(self):
         commands = []
         def run(args, **kwargs):

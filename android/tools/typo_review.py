@@ -31,6 +31,9 @@ class ReviewStore:
             CREATE TABLE IF NOT EXISTS labels(pair TEXT PRIMARY KEY, label TEXT NOT NULL);
             """)
 
+            if "kind" not in [r[1] for r in db.execute("PRAGMA table_info(edits)")]:
+                db.execute("ALTER TABLE edits ADD COLUMN kind TEXT NOT NULL DEFAULT 'edit'")
+
     @contextlib.contextmanager
     def connect(self):
         db = sqlite3.connect(self.db, timeout=10)
@@ -52,11 +55,14 @@ class ReviewStore:
                     item = json.loads(line)
                     key = str(uuid.UUID(item["id"]))
                     before, after = item["before"], item["after"]
+                    kind = item.get("kind", "edit")
+                    if kind not in ("edit", "punctuation"): continue
+                    if kind == "punctuation" and after not in ("。", "．", ".", "、", "，", ","): continue
                     day = datetime.date.fromisoformat(item["day"]).isoformat()
-                    if not all(isinstance(v, str) and 0 < len(v) <= 64 for v in (before, after)) or before == after:
+                    if not all(isinstance(v, str) and 0 < len(v) <= 64 for v in (before, after)) or (kind == "edit" and before == after):
                         continue
-                    pair = hashlib.sha256(json.dumps([before, after], ensure_ascii=True).encode()).hexdigest()
-                    result = db.execute("INSERT OR IGNORE INTO edits VALUES(?,?,?,?,?)", (key, pair, day, before, after))
+                    pair = hashlib.sha256(json.dumps([before, after] if kind == "edit" else [kind, before, after], ensure_ascii=True).encode()).hexdigest()
+                    result = db.execute("INSERT OR IGNORE INTO edits(id,pair,day,before,after,kind) VALUES(?,?,?,?,?,?)", (key, pair, day, before, after, kind))
                     count += result.rowcount
                 except (ValueError, KeyError, TypeError, UnicodeError):
                     continue
@@ -64,9 +70,9 @@ class ReviewStore:
 
     def rows(self):
         with self.connect() as db:
-            rows = db.execute("""SELECT e.pair, e.before, e.after, COUNT(*), MAX(e.day), COALESCE(l.label,'pending')
+            rows = db.execute("""SELECT e.pair, e.before, e.after, COUNT(*), MAX(e.day), COALESCE(l.label,'pending'), e.kind
                 FROM edits e LEFT JOIN labels l ON e.pair=l.pair GROUP BY e.pair ORDER BY COUNT(*) DESC, MAX(e.day) DESC""")
-            return [dict(zip(("pair", "before", "after", "count", "day", "label"), row)) for row in rows]
+            return [dict(zip(("pair", "before", "after", "count", "day", "label", "kind"), row)) for row in rows]
 
     def label(self, pair, label):
         if label not in LABELS or not isinstance(pair, str) or len(pair) != 64:
@@ -77,7 +83,7 @@ class ReviewStore:
             db.execute("INSERT OR REPLACE INTO labels VALUES(?,?)", (pair, label))
 
     def export(self):
-        rows = [r for r in self.rows() if r["label"] == "typo"]
+        rows = [r for r in self.rows() if r["label"] == "typo" and r["kind"] == "edit"]
         path = self.folder / "confirmed-typos.json"
         temp = path.with_suffix(".tmp")
         temp.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -109,11 +115,11 @@ button{cursor:pointer}button[aria-pressed=true]{background:#2c6778;color:white}b
 .muted{color:#536872;font-size:14px}h1{font-size:24px}#status{min-height:24px}
 @media(max-width:600px){.pair{grid-template-columns:1fr}.arrow{display:none}}
 </style><h1>Meltype 編集履歴の確認</h1>
-<p>削除前と打ち直し後を比較して判定してください。言い換えなどは「誤字ではない」を選びます。</p>
+<p>削除前と打ち直し後を比較して判定してください。言い換えなどは「誤字ではない」を選びます。句読点は「適切」「不適切」で判定します。</p>
 <p class="muted">確認用アプリを起動している間、USB接続を15秒ごとに確認します。未確認の記録は自動修正に使いません。</p>
 <button id="pull">USBから取得</button><button id="export">「誤字」を書き出す</button><p id="status"></p>
 <input id="search" placeholder="文字で検索" aria-label="文字で検索"><select id="filter" aria-label="判定で絞り込み">
-<option value="pending">未確認</option><option value="all">すべて</option><option value="typo">誤字</option><option value="not_typo">誤字ではない</option></select>
+<option value="pending">未確認</option><option value="all">すべて</option><option value="typo">誤字／不適切</option><option value="not_typo">誤字ではない／適切</option></select>
 <span id="counts" class="muted"></span><div id="list"></div>
 <script>
 const token=__TOKEN__;let rows=[];
@@ -124,8 +130,8 @@ function render(){const list=document.getElementById('list');list.replaceChildre
 document.getElementById('counts').textContent=`${rows.length}組 · 未確認 ${rows.filter(r=>r.label==='pending').length}組`;
 const shown=rows.filter(r=>(f==='all'||r.label===f)&&(!q||r.before.includes(q)||r.after.includes(q)));
 if(!shown.length)list.append(node('p','表示する記録はありません。'));
-for(const r of shown){const box=node('div',undefined,'record');box.append(node('p',`${r.count}回 · 最終 ${r.day}`,'muted'));const pair=node('div',undefined,'pair');pair.append(diff(r.before,r.after),node('span','→','arrow'),diff(r.after,r.before));box.append(pair);
-for(const [value,title]of [['typo','誤字'],['not_typo','誤字ではない'],['pending','保留']]){const b=node('button',title);b.setAttribute('aria-pressed',String(r.label===value));b.onclick=async()=>{b.disabled=true;try{await api('label',{pair:r.pair,label:value});r.label=value;render()}catch(e){status(e.message);b.disabled=false}};box.append(b)}list.append(box)}}
+for(const r of shown){const box=node('div',undefined,'record');box.append(node('p',`${r.kind==='punctuation'?'句読点':'編集'} · ${r.count}回 · 最終 ${r.day}`,'muted'));const pair=node('div',undefined,'pair');pair.append(diff(r.before,r.after),node('span','→','arrow'),diff(r.after,r.before));box.append(pair);
+for(const [value,title]of [['typo','誤字'],['not_typo','誤字ではない'],['pending','保留']]){const b=node('button',r.kind==='punctuation'?(value==='typo'?'不適切':value==='not_typo'?'適切':title):title);b.setAttribute('aria-pressed',String(r.label===value));b.onclick=async()=>{b.disabled=true;try{await api('label',{pair:r.pair,label:value});r.label=value;render()}catch(e){status(e.message);b.disabled=false}};box.append(b)}list.append(box)}}
 function status(s){document.getElementById('status').textContent=s}
 async function refresh(){try{const d=await api('rows');rows=d.rows;status(d.status);render()}catch(e){status(e.message)}}
 document.getElementById('search').oninput=render;document.getElementById('filter').onchange=render;

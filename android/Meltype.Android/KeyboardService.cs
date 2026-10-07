@@ -36,7 +36,9 @@ public sealed class KeyboardService : InputMethodService
     private Button? _punctuation;
     private CompositionView? _shownView;
     private readonly KeyboardShift _shiftState = new();
-    private Button? _hide;
+    private Button? _hide, _clipboardButton;
+    private bool _clipboardOpen;
+    private readonly ClipboardHistory _clipboardHistory = new();
     private LinearLayout? _keyRows;
     private bool _symbols;
     private bool _shownKatakana, _choosingBrackets;
@@ -93,7 +95,9 @@ public sealed class KeyboardService : InputMethodService
         _letters.Clear();
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetBackgroundColor(MobileStyle.KeyboardBackground);
-        root.SetPadding(0, 0, 0, Dp(24));
+        var initialInsets = Window?.Window?.DecorView?.RootWindowInsets;
+        var initialBottom = initialInsets == null ? 0 : OperatingSystem.IsAndroidVersionAtLeast(30) ? initialInsets.GetInsets(WindowInsets.Type.NavigationBars())!.Bottom : initialInsets.SystemWindowInsetBottom;
+        root.SetPadding(0, 0, 0, Math.Max(Dp(24), initialBottom));
         root.SetOnApplyWindowInsetsListener(new KeyboardInsets(Dp(24)));
         _candidateSignature = null;
         var scroll = new HorizontalScrollView(this) { HorizontalScrollBarEnabled = false };
@@ -101,18 +105,22 @@ public sealed class KeyboardService : InputMethodService
         _candidates.SetGravity(GravityFlags.CenterVertical); scroll.AddView(_candidates);
         scroll.SetBackgroundColor(Color.White);
         var candidateRow = new LinearLayout(this) { Orientation = Orientation.Horizontal, BaselineAligned = false };
+        _clipboardButton = new Button(this) { Text = "▤", TextSize = 23, ContentDescription = "クリップボードを開く" };
+        MobileStyle.KeyboardKey(_clipboardButton, function: true); _clipboardButton.Click += (_, _) => ShowClipboard();
+        candidateRow.AddView(_clipboardButton, new LinearLayout.LayoutParams(Dp(44), Dp(42)));
         candidateRow.AddView(scroll, new LinearLayout.LayoutParams(0, Dp(42), 1));
         _hide = new Button(this) { Text = "⌄", TextSize = 24, ContentDescription = "キーボードを閉じる" };
         MobileStyle.KeyboardKey(_hide, function: true); _hide.Click += (_, _) => HideKeyboard();
         candidateRow.AddView(_hide, new LinearLayout.LayoutParams(Dp(44), Dp(42)));
         root.AddView(candidateRow, new LinearLayout.LayoutParams(-1, Dp(42)));
-        _keyRows = new LinearLayout(this) { Orientation = Orientation.Vertical }; root.AddView(_keyRows);
+        _keyRows = new LinearLayout(this) { Orientation = Orientation.Vertical }; root.AddView(_keyRows, new LinearLayout.LayoutParams(-1, Dp(216)));
         BuildKeyRows(); Status(); return root;
     }
     private void BuildKeyRows()
     {
         if (_keyRows == null) return;
         CancelTouches();
+        _clipboardOpen = false;
         _touches.Clear();
         _keyRows.RemoveAllViews(); _letters.Clear(); _shift = null;
         foreach (var row in _symbols ? new[] { "1234567890", "@#¥%&-+(/", "「.,?!:;\"" } : new[] { "qwertyuiop", "asdfghjkl-", "zxcvbnm" })
@@ -128,7 +136,8 @@ public sealed class KeyboardService : InputMethodService
             {
                 var pair = c switch { '(' => "()", '「' => "「」", _ => null };
                 var key = pair != null ? AddKey(line, pair, () => BeginBrackets(pair), description: "括弧 " + pair + "の種類を選ぶ")
-                    : AddKey(line, c.ToString(), () => Input(_shiftState.Apply(c)));
+                    : AddKey(line, c.ToString(), () => Input(_shiftState.Apply(c)), hint: _symbols ? null : KeyboardSymbols.For(c),
+                        longAction: _symbols || KeyboardSymbols.For(c) == null ? null : () => InputSymbol(KeyboardSymbols.For(c)!));
                 if (char.IsLetter(c)) _letters.Add((key, c));
             }
             if (shortRow) AddKey(line, "⌫", () => Special(0x08), 1.5f, description: "削除、長押しで連続削除", repeat: true);
@@ -158,7 +167,7 @@ public sealed class KeyboardService : InputMethodService
         AddKey(controls, "↵", () => Special(0x0D), 2, description: "確定・改行"); _keyRows.AddView(controls);
     }
     private int Dp(int pixels) => MobileStyle.Dp(this, pixels);
-    private Button AddKey(LinearLayout row, string label, Action action, float weight = 1, int height = 54, string? description = null, bool repeat = false)
+    private Button AddKey(LinearLayout row, string label, Action action, float weight = 1, int height = 54, string? description = null, bool repeat = false, string? hint = null, Action? longAction = null)
     {
         var key = new Button(this) { Text = label, TextSize = label.Length > 1 ? 13 : 20, ContentDescription = description ?? label };
         key.SetSingleLine(true);
@@ -166,15 +175,24 @@ public sealed class KeyboardService : InputMethodService
         key.Click += (_, _) => invoke();
         if (label != ",")
         {
-            var touch = new KeyTouch(_main!, invoke, repeat);
+            var touch = new KeyTouch(_main!, invoke, repeat, longAction == null ? null : () => { longAction(); _shiftState.Consume(); Status(); });
             _touches.Add(touch); key.SetOnTouchListener(touch);
         }
-        row.AddView(key, new LinearLayout.LayoutParams(0, Dp(height), weight)); return key;
+        View cell = key;
+        if (hint != null)
+        {
+            var frame = new FrameLayout(this); frame.AddView(key, new FrameLayout.LayoutParams(-1,-1));
+            var mark = new TextView(this) { Text = hint, TextSize = 10, Gravity = GravityFlags.Top | GravityFlags.Right, ImportantForAccessibility = ImportantForAccessibility.No };
+            mark.SetTextColor(MobileStyle.Muted); mark.SetPadding(0,Dp(2),Dp(4),0);
+            frame.AddView(mark, new FrameLayout.LayoutParams(-1,-2)); cell = frame;
+        }
+        row.AddView(cell, new LinearLayout.LayoutParams(0, Dp(height), weight)); return key;
     }
     public override bool OnEvaluateFullscreenMode() => false;
     public override void OnStartInput(EditorInfo? attribute, bool restarting)
     {
         base.OnStartInput(attribute, restarting);
+        if (_clipboardOpen) BuildKeyRows();
         CancelTouches();
         Interlocked.Increment(ref _generation);
         _preeditActive = false; _shownView = null; _choosingBrackets = false; _shiftState.Reset();
@@ -220,7 +238,7 @@ public sealed class KeyboardService : InputMethodService
     public override void OnFinishInputView(bool finishingInput)
     {
         CancelTouches(); _shiftState.Reset();
-        if (_symbols) { _symbols = false; BuildKeyRows(); }
+        if (_symbols || _clipboardOpen) { _symbols = false; BuildKeyRows(); }
         Status(); base.OnFinishInputView(finishingInput);
     }
     public override void OnUpdateSelection(int oldSelStart, int oldSelEnd, int newSelStart, int newSelEnd, int candidatesStart, int candidatesEnd)
@@ -299,7 +317,21 @@ public sealed class KeyboardService : InputMethodService
             if (generation != Volatile.Read(ref _generation)) return;
             var editor = CurrentInputConnection; if (editor == null) return;
             if (operation == 0) { editor.SetComposingText(text, 1); _preeditActive = true; }
-            else if (operation == 1) { editor.CommitText(text, 1); _preeditActive = false; }
+            else if (operation == 1) {
+#if TRAINING_BUILD
+                if (Collecting() && !_english && text.Length > 0 && "。．.、，,".Contains(text[^1]))
+                {
+                    var context = text.Length > 1 ? text[..^1] : editor.GetTextBeforeCursor(64, (GetTextFlags)0);
+                    var punctuation = text[^1].ToString();
+                    if(!string.IsNullOrEmpty(context)) _worker?.Post(()=>
+                    {
+                        if(generation != Volatile.Read(ref _generation) || !_preferences!.Current.LearningEnabled) return;
+                        try { _trainingStore!.AppendPunctuation(context, punctuation); }
+                        catch(IOException) { try { _trainingStore?.Stop(); } catch(IOException) { } }
+                    });
+                }
+#endif
+                editor.CommitText(text, 1); _preeditActive = false; }
             else if (operation == 2)
             {
                 if (_preeditActive) editor.SetComposingText("", 1);
@@ -310,7 +342,9 @@ public sealed class KeyboardService : InputMethodService
             else if (operation == 7) { editor.CommitText(text, 1); _preeditActive = false; MoveCursor(Keycode.DpadLeft); }
             else if (operation is 5 or 6) MoveCursor(operation == 5 ? Keycode.DpadLeft : Keycode.DpadRight);
             _shownView = view; _shownKatakana = katakana; _choosingBrackets = choosingBrackets; Status();
+            if (_clipboardOpen && view is { Candidates.Count: > 0 }) BuildKeyRows();
             if (_hide != null) _hide.Visibility = view is { Candidates.Count: > 0 } ? ViewStates.Gone : ViewStates.Visible;
+            if (_clipboardButton != null) _clipboardButton.Visibility = view is { Candidates.Count: > 0 } ? ViewStates.Gone : ViewStates.Visible;
             var signature = view == null ? "" : string.Join('\0', view.Candidates.Take(24)) + "\u0001" + view.SelectedIndex;
             if (_candidateSignature == signature) return;
             _candidateSignature = signature;
@@ -333,6 +367,56 @@ public sealed class KeyboardService : InputMethodService
                 }
         });
     }
+    private void InputSymbol(string symbol)
+    {
+        if(symbol is "(" or ")" or "「」") BeginBrackets(symbol == "「」" ? "「」" : "()");
+        else Input(symbol[0]);
+    }
+    private void ShowClipboard()
+    {
+        if (_restricted || _keyRows == null) return;
+        CancelTouches();
+#if TRAINING_BUILD
+        _editCapture?.Cancel();
+#endif
+        var manager = (global::Android.Content.ClipboardManager?)GetSystemService(ClipboardService);
+        var clip = manager?.PrimaryClip;
+        var sensitive = clip?.Description?.Extras?.GetBoolean("android.content.extra.IS_SENSITIVE", false) == true;
+        if (clip != null && !sensitive)
+            for (var i=0; i<clip.ItemCount; i++) _clipboardHistory.Add(clip.GetItemAt(i)?.Text);
+        _clipboardOpen = true; _keyRows.RemoveAllViews(); _letters.Clear(); _shift = null;
+        var toolbar = new LinearLayout(this) { BaselineAligned = false };
+        AddKey(toolbar, "戻る", () => { BuildKeyRows(); Status(); }, height: 42, description: "クリップボードを閉じる");
+        AddKey(toolbar, "全消去", () => { _clipboardHistory.Clear(); RenderClipboardItems(); }, height: 42, description: "クリップボード履歴を全消去");
+        _keyRows.AddView(toolbar);
+        RenderClipboardItems();
+    }
+    private void RenderClipboardItems()
+    {
+        if(_keyRows == null) return;
+        while(_keyRows.ChildCount>1) _keyRows.RemoveViewAt(1);
+        var scroll = new ScrollView(this); var list = new LinearLayout(this) { Orientation = Orientation.Vertical }; scroll.AddView(list);
+        foreach(var text in _clipboardHistory.Items)
+        {
+            var button = new Button(this) { Text = text, TextSize = 15, ContentDescription = "クリップボード項目" };
+            MobileStyle.KeyboardKey(button); button.SetMaxLines(3); button.SetPadding(Dp(12),Dp(4),Dp(12),Dp(4));
+            button.Click += (_,_) => PasteClipboard(text); list.AddView(button,new LinearLayout.LayoutParams(-1,-2));
+        }
+        if(list.ChildCount==0) list.AddView(new TextView(this) { Text = "コピーしたテキストはありません。", TextSize = 15 });
+        _keyRows.AddView(scroll,new LinearLayout.LayoutParams(-1,Dp(174)));
+    }
+    private void PasteClipboard(string text)
+    {
+        if (!_clipboardHistory.Items.Contains(text)) { RenderClipboardItems(); return; }
+        var generation = Volatile.Read(ref _generation);
+        BuildKeyRows(); Status();
+        if(_restricted) return;
+        Queue(()=>
+        {
+            _session?.Commit();
+            _main!.Post(()=> { if(generation == Volatile.Read(ref _generation)) CurrentInputConnection?.CommitText(text,1); });
+        });
+    }
     private void BeginBrackets(string pair)
     {
 #if TRAINING_BUILD
@@ -345,6 +429,12 @@ public sealed class KeyboardService : InputMethodService
     {
         var editor = CurrentInputConnection;
         if (editor == null) return;
+        var extracted = editor.GetExtractedText(new ExtractedTextRequest(), (GetTextFlags)0);
+        if (extracted?.Text != null && extracted.SelectionStart >= 0 && extracted.SelectionEnd >= 0)
+        {
+            var target = CursorMovement.Target(extracted.Text.ToString(), extracted.SelectionStart, extracted.SelectionEnd, code == Keycode.DpadLeft) + extracted.StartOffset;
+            if (editor.SetSelection(target, target)) return;
+        }
         using var down = new global::Android.Views.KeyEvent(KeyEventActions.Down, code);
         using var up = new global::Android.Views.KeyEvent(KeyEventActions.Up, code);
         editor.SendKeyEvent(down); editor.SendKeyEvent(up);
@@ -377,6 +467,11 @@ public sealed class KeyboardService : InputMethodService
     private void Status()
     {
         RefreshPunctuation();
+        if (_clipboardButton != null)
+        {
+            _clipboardButton.Enabled = !_restricted;
+            _clipboardButton.Visibility = _shownView is { Candidates.Count: > 0 } ? ViewStates.Gone : ViewStates.Visible;
+        }
         if (_mode != null)
         {
             var pending = !_restricted && !_english && !_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text);
@@ -417,11 +512,14 @@ public sealed class KeyboardService : InputMethodService
         private readonly Action _action;
         private readonly bool _repeats;
         private readonly Java.Lang.Runnable _repeat;
+        private readonly SymbolPress? _symbolPress;
+        private readonly Java.Lang.Runnable? _longPress;
         private View? _view;
         private bool _held;
-        public KeyTouch(Handler handler, Action action, bool repeats)
+        public KeyTouch(Handler handler, Action action, bool repeats, Action? longAction = null)
         {
             _handler = handler; _action = action; _repeats = repeats;
+            if(longAction != null) { _symbolPress = new SymbolPress(action,longAction); _longPress = new Java.Lang.Runnable(()=>_symbolPress.Hold()); }
             _repeat = new Java.Lang.Runnable(() => { if (!_held) return; _action(); _handler.PostDelayed(_repeat!, 60); });
         }
         public bool OnTouch(View? view, MotionEvent? e)
@@ -429,14 +527,16 @@ public sealed class KeyboardService : InputMethodService
             if (view == null || e == null) return false;
             if (e.ActionMasked == MotionEventActions.Down)
             {
-                Cancel(); _view = view; _held = true; view.Pressed = true; _action();
+                Cancel(); _view = view; _held = true; view.Pressed = true;
+                if (_symbolPress != null) { _symbolPress.Down(); _handler.PostDelayed(_longPress!,450); } else _action();
                 if (_repeats) _handler.PostDelayed(_repeat, 400);
             }
-            else if (e.ActionMasked is MotionEventActions.Up or MotionEventActions.Cancel ||
+            else if(e.ActionMasked == MotionEventActions.Up) { _symbolPress?.Up(); Cancel(); }
+            else if (e.ActionMasked == MotionEventActions.Cancel ||
                 e.ActionMasked == MotionEventActions.Move && (e.GetX() < 0 || e.GetX() >= view.Width || e.GetY() < 0 || e.GetY() >= view.Height)) Cancel();
             return true;
         }
-        public void Cancel() { _held = false; _handler.RemoveCallbacks(_repeat); if (_view != null) _view.Pressed = false; _view = null; }
+        public void Cancel() { _symbolPress?.Cancel(); if(_longPress != null) _handler.RemoveCallbacks(_longPress); _held = false; _handler.RemoveCallbacks(_repeat); if (_view != null) _view.Pressed = false; _view = null; }
     }
 
     private sealed class KeyboardInsets(int padding) : Java.Lang.Object, View.IOnApplyWindowInsetsListener
@@ -447,7 +547,7 @@ public sealed class KeyboardService : InputMethodService
             var bottom = OperatingSystem.IsAndroidVersionAtLeast(30)
                 ? insets.GetInsets(WindowInsets.Type.NavigationBars())!.Bottom
                 : insets.SystemWindowInsetBottom;
-            view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, padding + bottom);
+            view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, Math.Max(padding, bottom));
             return insets;
         }
     }

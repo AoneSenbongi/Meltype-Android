@@ -53,13 +53,19 @@ public sealed class TypoTrainingStore
     public void Start() { lock (Gate) { Directory.CreateDirectory(_folder); File.WriteAllText(StateFile, _clock().AddDays(7).ToString("O")); } }
     public void Stop() { lock (Gate) { if (File.Exists(StateFile)) File.Delete(StateFile); } }
     public void Clear() { lock (Gate) { Stop(); if (File.Exists(EventsFile)) File.Delete(EventsFile); } }
-    public void Append(string before, string after)
+    public void Append(string before, string after) => AppendRecord(before, after, "edit");
+    public void AppendPunctuation(string context, string punctuation)
+    {
+        if (string.IsNullOrEmpty(context) || !context.Any(c => c is >= '\u3040' and <= '\u30ff' or >= '\u3400' and <= '\u9fff' or >= '\uff66' and <= '\uff9f') || punctuation is not ("。" or "．" or "." or "、" or "，" or ",")) return;
+        AppendRecord(context, punctuation, "punctuation");
+    }
+    private void AppendRecord(string before, string after, string kind)
     {
         lock (Gate)
         {
             if (!Active || Count >= 5000) return;
             var record = new { id = Guid.NewGuid().ToString(), day = _clock().ToString("yyyy-MM-dd"),
-                before = TypoEditCapture.Bound(before), after = TypoEditCapture.Bound(after) };
+                before = TypoEditCapture.Bound(before), after = TypoEditCapture.Bound(after), kind };
             File.AppendAllText(EventsFile, JsonSerializer.Serialize(record) + "\n");
         }
     }

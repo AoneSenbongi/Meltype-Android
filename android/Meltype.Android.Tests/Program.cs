@@ -10,6 +10,7 @@ if (args is ["--import-dictionary", var source, var target])
     return;
 }
 
+KeyboardInteractionTests.Run();
 TypoTrainingTests.Run();
 InputSettingTests.Run();
 UserDictionaryTests.Run();

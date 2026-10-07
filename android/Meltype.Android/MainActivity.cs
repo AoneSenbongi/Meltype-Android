@@ -123,8 +123,8 @@ public sealed class MainActivity : Activity
         {
             if (!preferences.Current.LearningEnabled) { Toast.MakeText(this, "先に学習を再開してください。", ToastLength.Short)!.Show(); return; }
             using var dialog = new AlertDialog.Builder(this);
-            dialog.SetTitle("編集履歴を端末内に保存します");
-            dialog.SetMessage("削除前と打ち直し後の最大64文字を記録します。機密情報を入力する時は停止してください。USBデバッグを許可したPCから取得できます。記録は自動修正に使いません。");
+            dialog.SetTitle("編集・句読点の履歴を端末内に保存します");
+            dialog.SetMessage("削除前後の文字と、句読点入力直前の最大64文字・入力した句読点を記録します。機密情報を入力する時は停止してください。USBデバッグを許可したPCから取得できます。記録は自動修正に使いません。");
             dialog.SetPositiveButton("開始", (_, _) => { store.Start(); UpdateCollection(); });
             dialog.SetNegativeButton("取消", (_, _) => { }); dialog.Show();
         });
