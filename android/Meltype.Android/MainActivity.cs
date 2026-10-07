@@ -14,7 +14,11 @@ using Meltype.AndroidCore;
 
 namespace Meltype.Mobile;
 
+#if TRAINING_BUILD
+[Activity(Name = "jp.aonesenbongi.meltype.MainActivity", Label = "Meltype 学習用", MainLauncher = true, Exported = true)]
+#else
 [Activity(Name = "jp.aonesenbongi.meltype.MainActivity", Label = "Meltype", MainLauncher = true, Exported = true)]
+#endif
 public sealed class MainActivity : Activity
 {
     private TextView? _setupStatus;
@@ -47,6 +51,30 @@ public sealed class MainActivity : Activity
         }
         Add("1. キーボードを有効にする", () => StartActivity(new Intent(Settings.ActionInputMethodSettings)), true);
         Add("2. キーボードを選ぶ", () => ((InputMethodManager)GetSystemService(InputMethodService)!).ShowInputMethodPicker());
+#if TRAINING_BUILD
+        var store = new TypoTrainingStore(Path.Combine(FilesDir!.AbsolutePath, "typo-training"));
+        var collection = Label("", 14, MobileStyle.Ink); layout.AddView(collection);
+        void UpdateCollection() => collection.Text = store.Active
+            ? $"収集中 · {store.Count}件 · {store.Until?.ToLocalTime():M月d日 HH:mm}まで"
+            : $"収集停止中 · {store.Count}件";
+        UpdateCollection();
+        Add("7日間の収集を開始", () =>
+        {
+            using var dialog = new AlertDialog.Builder(this);
+            dialog.SetTitle("編集履歴を端末内に保存します");
+            dialog.SetMessage("削除前と打ち直し後の最大64文字を記録します。機密情報を入力する時は停止してください。USBデバッグを許可したPCから取得できます。記録は自動修正に使いません。");
+            dialog.SetPositiveButton("開始", (_, _) => { store.Start(); UpdateCollection(); });
+            dialog.SetNegativeButton("取消", (_, _) => { }); dialog.Show();
+        });
+        Add("収集を停止", () => { store.Stop(); UpdateCollection(); });
+        Add("端末の収集記録を削除", () =>
+        {
+            using var dialog = new AlertDialog.Builder(this);
+            dialog.SetMessage("端末の編集記録を削除して収集を停止します。PCへ取得済みの記録は残ります。");
+            dialog.SetPositiveButton("削除", (_, _) => { store.Clear(); UpdateCollection(); });
+            dialog.SetNegativeButton("取消", (_, _) => { }); dialog.Show();
+        });
+#endif
         var trial = Label("試し書き", 16, MobileStyle.Ink); trial.SetPadding(0, Dp(24), 0, Dp(8)); layout.AddView(trial);
         var editor = new EditText(this) { Id = Resource.Id.test_editor, Hint = "kyouhagoogledekensaku", TextSize = 17, InputType = InputTypes.ClassText | InputTypes.TextFlagMultiLine, Gravity = GravityFlags.Top };
         editor.SetTextColor(MobileStyle.Ink); editor.SetHintTextColor(MobileStyle.Muted);
@@ -65,7 +93,8 @@ public sealed class MainActivity : Activity
             dialog.SetPositiveButton("閉じる", (_, _) => { });
             dialog.Show();
         });
-        var about = Label("Android試作版 0.2.0\n雪代／Yukishiro氏のMeltypeを基にした非公式Forkです。変換にはOSS版Mozcを使用し、入力は端末内で処理します。", 12, MobileStyle.Muted);
+        var version = PackageManager?.GetPackageInfo(PackageName!, (global::Android.Content.PM.PackageInfoFlags)0)?.VersionName;
+        var about = Label($"Android試作版 {version}\n雪代／Yukishiro氏のMeltypeを基にした非公式Forkです。変換にはOSS版Mozcを使用し、入力は端末内で処理します。", 12, MobileStyle.Muted);
         about.SetPadding(0, Dp(18), 0, 0); layout.AddView(about);
         var page = new ScrollView(this) { FillViewport = true }; page.AddView(layout); SetContentView(page);
         if (Intent?.GetBooleanExtra("selftest", false) == true) RunSelfTest(editor);

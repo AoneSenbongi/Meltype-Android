@@ -33,3 +33,9 @@ tools/data/
 experimental-build/
 backups/
 distributions/
+
+# Local typo-review records and Python bytecode
+training-data/
+*.sqlite3
+*.sqlite3-*
+**/__pycache__/
