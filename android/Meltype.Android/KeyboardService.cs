@@ -276,6 +276,7 @@ public sealed class KeyboardService : InputMethodService
             else if (key is 0x25 or 0x27) MoveCursor(key == 0x25 ? Keycode.DpadLeft : Keycode.DpadRight);
             return;
         }
+        if (key == 0x0D && _choosingBrackets && _symbols) { _symbols = false; BuildKeyRows(); Status(); }
         Queue(() => _session?.Key(key));
     }
     private void Queue(Action action)

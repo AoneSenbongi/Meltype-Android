@@ -30,7 +30,7 @@ public sealed class AndroidInputSession : ICompositionHost
     public void BeginBracketConversion(bool quotes)
     {
         Commit();
-        _brackets = quotes ? ["「」", "『』", "【】"] : ["()", "{}", "[]"];
+        _brackets = quotes ? ["「」", "｢｣", "『』", "【】"] : ["()", "（）", "{}", "｛｝", "[]", "［］"];
         _bracketIndex = 0;
         ShowBrackets();
     }
@@ -98,7 +98,7 @@ public sealed class AndroidInputSession : ICompositionHost
             if (code is 0x08 or 0x1B) { _brackets = null; Hide(); return; }
             if (code == 0x0D) { CommitBracket(); return; }
             if (code is 0x20 or 0x25 or 0x27)
-            { _bracketIndex = (_bracketIndex + (code == 0x25 ? 2 : 1)) % _brackets!.Length; ShowBrackets(); return; }
+            { _bracketIndex = (_bracketIndex + (code == 0x25 ? _brackets!.Length - 1 : 1)) % _brackets!.Length; ShowBrackets(); return; }
             CommitBracket();
         }
         if (code is 0x25 or 0x27 && string.IsNullOrEmpty(View?.Text))

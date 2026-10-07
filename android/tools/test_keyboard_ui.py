@@ -76,8 +76,6 @@ find("content-desc", "英語専用モードに切り替える")
 tap(find("content-desc", "Shift、2回押すと大文字固定"))
 assert find("content-desc", "q").get("text") == "Q", "Shift does not update letter labels"
 tap(find("content-desc", "Shift、2回押すと大文字固定"))
-assert find("content-desc", "q").get("text") == "Q", "Double Shift did not lock capitals"
-tap(find("content-desc", "大文字固定を解除"))
 assert find("content-desc", "q").get("text") == "q"
 keys = {node.get("content-desc"): node for node in tree().iter("node") if node.get("class") == "android.widget.Button"}
 find("content-desc", "キーボードを閉じる")

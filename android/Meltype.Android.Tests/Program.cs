@@ -57,8 +57,17 @@ void ChoosePair(AndroidInputSession input, string pair)
 {
     var quotes = "「『【".Contains(pair[0]);
     input.BeginBracketConversion(quotes);
-    input.Select(Array.IndexOf(quotes ? new[] { "「」", "『』", "【】" } : new[] { "()", "{}", "[]" }, pair));
+    input.Select(input.View!.Candidates.ToList().IndexOf(pair));
 }
+shift.Reset(); shift.Toggle(1000); shift.Toggle(1400);
+if (shift.Locked || shift.Active) throw new Exception("Slow Shift taps activated Caps Lock");
+shift.Toggle(2000); shift.Toggle(2299);
+if (!shift.Locked) throw new Exception("Fast Shift taps did not lock capitals");
+shift.Reset(); shift.Toggle(3000); shift.Toggle(3300);
+if (!shift.Locked) throw new Exception("300ms Shift boundary did not lock capitals");
+shift.Reset(); shift.Toggle(4000); shift.Consume(); shift.Toggle(4100);
+if (shift.Locked || !shift.Active) throw new Exception("Other action did not break double tap");
+shift.Reset();
 var modeOps = new List<(int Op, string Text)>();
 var modes = new AndroidInputSession(new FakeConverter(), _ => [], (op, text, _) => modeOps.Add((op,text)));
 foreach (var c in "nihongo") modes.Character(c);
