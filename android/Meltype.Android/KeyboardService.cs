@@ -27,11 +27,14 @@ public sealed class KeyboardService : InputMethodService
     private readonly List<KeyTouch> _touches = [];
     private Button? _mode;
     private Button? _shift;
+    private Button? _punctuation;
+    private CompositionView? _shownView;
+    private readonly KeyboardShift _shiftState = new();
     private Button? _hide;
     private LinearLayout? _keyRows;
     private bool _symbols;
     private readonly List<(Button Key, char Letter)> _letters = [];
-    private bool _english, _restricted, _caps, _ready;
+    private bool _english, _restricted, _ready;
     private bool _preeditActive;
     private int _generation;
     private int _jobGeneration;
@@ -87,11 +90,11 @@ public sealed class KeyboardService : InputMethodService
             if (shortRow)
             {
                 if (_symbols) AddKey(line, "ABC", () => { _symbols = false; BuildKeyRows(); Status(); }, 1.5f, description: "英字配列に戻る");
-                else _shift = AddKey(line, "⇧", () => { _caps = !_caps; Status(); }, 1.5f, description: "大文字・小文字を切り替える");
+                else _shift = AddKey(line, "⇧", () => { _shiftState.Toggle(); Status(); }, 1.5f, description: "大文字・小文字を切り替える");
             }
             foreach (var c in row)
             {
-                var key = AddKey(line, c.ToString(), () => Input(_caps ? char.ToUpperInvariant(c) : c));
+                var key = AddKey(line, c.ToString(), () => Input(_shiftState.Apply(c)));
                 if (char.IsLetter(c)) _letters.Add((key, c));
             }
             if (shortRow) AddKey(line, "⌫", () => Special(0x08), 1.5f, description: "削除、長押しで連続削除", repeat: true);
@@ -107,17 +110,9 @@ public sealed class KeyboardService : InputMethodService
             var english = _english;
             Queue(() => _session?.SetEnglish(english)); Status();
         }, description: "英語専用モードに切り替える");
-        var punctuation = AddKey(controls, ",", () =>
-        {
-            if (_restricted) Input(',');
-            else
-            {
-                var before = CurrentInputConnection?.GetTextBeforeCursor(128, (GetTextFlags)0);
-                Queue(() => _session?.SentencePunctuation(before));
-            }
-        });
-        punctuation.ContentDescription = "句読点、文末はピリオド、長押しでピリオド";
-        punctuation.LongClick += (_, e) => { Input('.'); e.Handled = true; };
+        _punctuation = AddKey(controls, ",", () => Input(_punctuation?.Text == "．" ? '.' : ','));
+        _punctuation.ContentDescription = "句読点、文末はピリオド、長押しでピリオド";
+        _punctuation.LongClick += (_, e) => { Input('.'); _shiftState.Reset(); Status(); e.Handled = true; };
         AddKey(controls, "空白", () => Input(' '), 3, description: "空白・変換");
         AddKey(controls, "←", () => Special(0x25), description: "左へ移動");
         AddKey(controls, "→", () => Special(0x27), description: "右へ移動");
@@ -128,12 +123,13 @@ public sealed class KeyboardService : InputMethodService
     {
         var key = new Button(this) { Text = label, TextSize = label.Length > 1 ? 13 : 20, ContentDescription = description ?? label };
         key.SetSingleLine(true);
-        MobileStyle.Button(key); key.SetPadding(0, 0, 0, 0); key.Click += (_, _) => action();
+        MobileStyle.Button(key); key.SetPadding(0, 0, 0, 0); Action invoke = () => { action(); if (label != "⇧") { _shiftState.Reset(); Status(); } };
+        key.Click += (_, _) => invoke();
         // Keep visual spacing inside the drawable, so gaps still belong to a key.
         key.Background = new global::Android.Graphics.Drawables.InsetDrawable(key.Background!, Dp(1));
         if (label != ",")
         {
-            var touch = new KeyTouch(_main!, action, repeat);
+            var touch = new KeyTouch(_main!, invoke, repeat);
             _touches.Add(touch); key.SetOnTouchListener(touch);
         }
         row.AddView(key, new LinearLayout.LayoutParams(0, Dp(height), weight)); return key;
@@ -144,7 +140,7 @@ public sealed class KeyboardService : InputMethodService
         base.OnStartInput(attribute, restarting);
         CancelTouches();
         Interlocked.Increment(ref _generation);
-        _preeditActive = false;
+        _preeditActive = false; _shownView = null; _shiftState.Reset();
         var type = attribute?.InputType ?? InputTypes.Null;
         var inputClass = type & InputTypes.MaskClass;
         var variation = type & InputTypes.MaskVariation;
@@ -160,7 +156,7 @@ public sealed class KeyboardService : InputMethodService
     {
         CancelTouches();
         CurrentInputConnection?.FinishComposingText();
-        _preeditActive = false;
+        _preeditActive = false; _shownView = null; _shiftState.Reset();
         Interlocked.Increment(ref _generation);
         _worker?.Post(() => _session?.Reset());
         _candidates?.RemoveAllViews(); base.OnFinishInput();
@@ -176,11 +172,12 @@ public sealed class KeyboardService : InputMethodService
         if (candidatesStart >= 0 && (newSelStart != candidatesEnd || newSelEnd != candidatesEnd))
         {
             CurrentInputConnection?.FinishComposingText();
-            _preeditActive = false;
+            _preeditActive = false; _shownView = null;
             Interlocked.Increment(ref _generation);
             _worker?.Post(() => _session?.Reset()); _candidates?.RemoveAllViews();
             CancelTouches(); _candidateSignature = null;
         }
+        RefreshPunctuation();
     }
     private void Input(char c)
     {
@@ -225,6 +222,7 @@ public sealed class KeyboardService : InputMethodService
             else if (operation == 3) editor.DeleteSurroundingTextInCodePoints(int.Parse(text), 0);
             else if (operation == 4) Enter();
             else if (operation is 5 or 6) MoveCursor(operation == 5 ? Keycode.DpadLeft : Keycode.DpadRight);
+            _shownView = view; RefreshPunctuation();
             if (_hide != null) _hide.Visibility = view is { Candidates.Count: > 0 } ? ViewStates.Gone : ViewStates.Visible;
             var signature = view == null ? "" : string.Join('\0', view.Candidates.Take(24)) + "\u0001" + view.SelectedIndex;
             if (_candidateSignature == signature) return;
@@ -235,7 +233,7 @@ public sealed class KeyboardService : InputMethodService
                 {
                     var index = i; var button = new Button(this) { Text = view.Candidates[index], ContentDescription = "候補 " + index };
                     MobileStyle.Button(button); button.TextSize = 17;
-                    button.Click += (_, _) => Queue(() => _session?.Select(index));
+                    button.Click += (_, _) => { _shiftState.Reset(); Status(); Queue(() => _session?.Select(index)); };
                     _candidates.AddView(button, new LinearLayout.LayoutParams(-2, Dp(38)) { MarginStart = Dp(4), MarginEnd = Dp(4) });
                 }
         });
@@ -251,7 +249,7 @@ public sealed class KeyboardService : InputMethodService
     private void Enter() { if (!SendDefaultEditorAction(true)) CurrentInputConnection?.CommitText("\n", 1); }
     private void HideKeyboard()
     {
-        CancelTouches();
+        _shiftState.Reset(); Status(); CancelTouches();
         if (!_ready || _restricted) { RequestHideSelf((HideSoftInputFlags)0); return; }
         var generation = Volatile.Read(ref _generation);
         Queue(() =>
@@ -260,8 +258,17 @@ public sealed class KeyboardService : InputMethodService
             _main!.Post(() => { if (generation == Volatile.Read(ref _generation)) RequestHideSelf((HideSoftInputFlags)0); });
         });
     }
+    private void RefreshPunctuation()
+    {
+        if (_punctuation == null) return;
+        if (_restricted || _english) { _punctuation.Text = ","; return; }
+        var text = _shownView?.Text;
+        if (string.IsNullOrEmpty(text)) text = CurrentInputConnection?.GetTextBeforeCursor(128, (GetTextFlags)0);
+        _punctuation.Text = AndroidInputSession.PredictPunctuation(text, false) == '.' ? "．" : "，";
+    }
     private void Status()
     {
+        RefreshPunctuation();
         if (_mode != null)
         {
             _mode.Text = _restricted || _english ? "ABC" : "日英";
@@ -269,8 +276,8 @@ public sealed class KeyboardService : InputMethodService
             _mode.Enabled = _ready && !_restricted;
             _mode.Background = MobileStyle.Rounded(this, _english ? MobileStyle.Soft : Color.White);
         }
-        foreach (var (key, letter) in _letters) key.Text = (_caps ? char.ToUpperInvariant(letter) : letter).ToString();
-        if (_shift != null) _shift.Background = MobileStyle.Rounded(this, _caps ? MobileStyle.Soft : Color.White);
+        foreach (var (key, letter) in _letters) key.Text = (_shiftState.Active ? char.ToUpperInvariant(letter) : letter).ToString();
+        if (_shift != null) _shift.Background = MobileStyle.Rounded(this, _shiftState.Active ? MobileStyle.Soft : Color.White);
     }
     public override void OnDestroy()
     {

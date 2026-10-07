@@ -45,10 +45,12 @@ public sealed class AndroidInputSession : ICompositionHost
 
     // Conservative local heuristic, not a grammatical or semantic analysis.
     // Explicit comma/period keys and long-press period remain available.
-    public void SentencePunctuation(string? beforeCursor = null)
+    public void SentencePunctuation(string? beforeCursor = null) => Character(PunctuationCharacter(beforeCursor));
+    public char PunctuationCharacter(string? beforeCursor = null) => PredictPunctuation(View?.Text ?? beforeCursor, _english);
+    public static char PredictPunctuation(string? text, bool english)
     {
-        var text = (View?.Text ?? beforeCursor ?? "").TrimEnd('」', '』', '）', ')', ' ', '\t');
-        Character(!_english && SentenceEndings.Any(ending => text.EndsWith(ending, StringComparison.Ordinal)) ? '.' : ',');
+        var endingText = (text ?? "").TrimEnd('」', '』', '）', ')', ' ', '\t');
+        return !english && SentenceEndings.Any(ending => endingText.EndsWith(ending, StringComparison.Ordinal)) ? '.' : ',';
     }
 
     public void Key(int code, char? character = null)

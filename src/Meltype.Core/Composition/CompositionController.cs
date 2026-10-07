@@ -26,6 +26,12 @@ public sealed record CompositionView(
 /// <summary>CompositionController が外界とやり取りする口。テストでは偽物に差し替える。</summary>
 public interface ICompositionHost
 {
+    /// <summary>選択中の確定済み文字と、その読み。取得できなければ null。</summary>
+    ReconversionSelection? GetReconversionSelection() => null;
+
+    /// <summary>元の選択範囲が維持されている場合だけ置換する。</summary>
+    bool TryReplaceSelection(ReconversionSelection selection, string text) => false;
+
     /// <summary>確定した文字列を、フォーカスのあるテキストボックスへ入力する。</summary>
     void CommitText(string text);
 
@@ -53,6 +59,8 @@ public interface ICompositionHost
 
     void Hide();
 }
+
+public sealed record ReconversionSelection(string Text, string Reading);
 
 /// <summary>CompositionController の設定と、外の判定器へのつなぎ。</summary>
 public sealed class CompositionOptions
@@ -193,6 +201,7 @@ public sealed class CompositionController
     private string? _followingText;
     private long _lastCommitTime = long.MinValue / 2;
     private int _compositionId;
+    private ReconversionSelection? _reconversion;
 
     // 英数状態で判定中の語。打鍵はすぐアプリに送り (待たせない)、ローマ字と分かったら消して変換ボックスに入れ直す。
     private readonly StringBuilder _heldLetters = new();
@@ -245,6 +254,9 @@ public sealed class CompositionController
     /// <summary>直近に確定した文字列 (テスト・ログ用)。</summary>
     public event Action<string>? Committed;
 
+    /// <summary>選択範囲を置換した。入力先の行を読み直すための通知。</summary>
+    public event Action? ReconversionCommitted;
+
     /// <summary>キューにたまった入力をすべて処理する。UI スレッドで呼ぶ。</summary>
     public void Pump()
     {
@@ -257,6 +269,8 @@ public sealed class CompositionController
             }
             UpdateView();
             if (IsComposing) return;
+            // 読みをすべて削除した場合も、元の選択範囲は置換せず再変換を終了する。
+            if (_reconversion is not null) ClearComposition();
             if (_gate.TryRelease())
             {
                 // 以降のキーアップはフックを素通りしてアプリに直接届くので、追跡をやめる。
@@ -359,13 +373,23 @@ public sealed class CompositionController
     /// <summary>例外からの復旧用。未確定の内容と追跡中の状態をすべて捨てる (次の入力で同じ例外を繰り返さないように)。</summary>
     public void Reset()
     {
-        _text.Clear();
-        _converting = false;
-        _clauses = [];
+        ClearComposition();
         ClearHeld();
         _swallowedShift.Clear();
         _replayedDown.Clear();
         _capturedDown.Clear();
+    }
+
+    /// <summary>変換中の文節・候補・選択中の文節をすべて消す。再変換の状態も消す。</summary>
+    //追加処理に伴って、整理のための関数追加
+    private void ClearComposition()
+    {
+        _reconversion = null;
+        ++_compositionId;
+        _text.Clear();
+        _converting = false;
+        _clauses = [];
+        _spaceStartedConversion = false;
     }
 
     /// <summary>フォーカスが変わったときなど。前の入力欄の文脈を持ち越さない。</summary>
@@ -463,6 +487,12 @@ public sealed class CompositionController
             return;
         }
 
+        if (_reconversion is not null && vk == VirtualKeys.Escape)
+        {
+            ClearComposition();
+            return;
+        }
+
         if (!IsComposing)
         {
             StartWith(e);
@@ -473,6 +503,10 @@ public sealed class CompositionController
 
         switch (vk)
         {
+            case VirtualKeys.Convert:
+                _text.FixTypos();
+                StartConversion(preferJapanese: true);
+                return;
             case VirtualKeys.Return:
                 _text.FixTypos();
                 Commit();
@@ -565,6 +599,17 @@ public sealed class CompositionController
     /// <summary>変換ボックスが空のときの最初の打鍵。英字・句読点なら入力を始め、それ以外はそのまま通す。</summary>
     private void StartWith(KeyEvent e)
     {
+        if (e.Vk == VirtualKeys.Convert)
+        {
+            if (_host.GetReconversionSelection() is not { } selection || string.IsNullOrWhiteSpace(selection.Reading)) return;
+            _correctable.Clear();
+            BeginComposition();
+            _reconversion = selection;
+            foreach (var kana in selection.Reading) _text.AppendKana(kana, kana);
+            _text.Mode = DisplayMode.Hiragana;
+            StartConversion(preferJapanese: true);
+            return;
+        }
         // かな入力: かなのキーならすべて入力を始める (英数状態でなければ)。
         if (_options.KanaInput() && !_options.DirectMode() && KanaOf(e) is { } key)
         {
@@ -762,6 +807,9 @@ public sealed class CompositionController
         var shift = _swallowedShift.Count > 0 || _host.IsShiftDown();
         if (Detection.KanaDetector.KanaForKey(e.Vk, shift) is not { } kana) return null;
         var raw = _host.CharFromKey(e, _swallowedShift.Count > 0) ?? kana;
+        // Shift で打った小書き文字 (っ = Shift+Z、ぃ = Shift+E) は、大文字で打った英語 (Z・E) ではない
+        // (きのうはたのしかった が たのしかZq になっていた)。
+        if (shift && kana != Detection.KanaDetector.KanaForKey(e.Vk, false)) raw = char.ToLowerInvariant(raw);
         return (raw, kana);
     }
 
@@ -787,6 +835,7 @@ public sealed class CompositionController
         var shift = _swallowedShift.Count > 0;
         switch (vk)
         {
+            case VirtualKeys.Convert:
             case VirtualKeys.Space:
             case VirtualKeys.Down:
                 NextCandidate(+1);
@@ -1354,6 +1403,17 @@ public sealed class CompositionController
         if (fixEnglish && !converting && _text.Mode == DisplayMode.Auto) text = FixEnglishTypo(text);
         var english = converting ? _clauses.All(c => c.IsEnglish) : _text.IsAlphanumericAt(final: true);
         var chosen = converting && _clauses.Any(c => c.Changed);
+        if (_reconversion is { } selection)
+        {
+            if (_host.TryReplaceSelection(selection, text + suffix))
+            {
+                if (converting) Learn();
+                ResetContext();
+                ReconversionCommitted?.Invoke();
+            }
+            ClearComposition();
+            return;
+        }
         if (converting) Learn();
         else LearnLanguage();
         CommitText(text + suffix, english, _text.Raw, chosen);

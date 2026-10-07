@@ -16,6 +16,24 @@ cursorSession.SetEnglish(true); cursorOperations.Clear(); cursorSession.Key(0x27
 if (!cursorOperations.SequenceEqual(new[] { 6 })) throw new Exception("English arrow did not move the editor cursor.");
 Console.WriteLine("PASS: editor arrows before input, after confirmation and in English; composition arrows stay internal");
 
+var ciSession = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+ciSession.Character('c'); ciSession.Character('i');
+if (ciSession.View?.Text != "し") throw new Exception("Upstream ci conversion is missing.");
+Console.WriteLine("PASS: upstream ci spelling converts to し");
+
+var punctuationSession = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+if (punctuationSession.PunctuationCharacter("我々は宇宙人だ") != '.' || punctuationSession.PunctuationCharacter("我々は") != ',') throw new Exception("Punctuation key prediction is wrong.");
+punctuationSession.SetEnglish(true);
+if (punctuationSession.PunctuationCharacter("文です") != ',') throw new Exception("English punctuation key became a period.");
+punctuationSession.SetEnglish(false);
+foreach (var c in "kyouha") punctuationSession.Character(c);
+if (punctuationSession.PunctuationCharacter("前の文です") != ',') throw new Exception("Punctuation label ignored pending text.");
+var shift = new KeyboardShift(); shift.Toggle();
+if (shift.Apply('a') != 'A' || shift.Apply('b') != 'b' || shift.Active) throw new Exception("Shift did not release after one letter.");
+shift.Toggle(); shift.Reset();
+if (shift.Active || shift.Apply('a') != 'a') throw new Exception("Other key did not release Shift.");
+Console.WriteLine("PASS: punctuation prediction follows output; Shift releases after one character or other action");
+
 var converter = new FakeConverter();
 var document = "";
 var preedit = "";

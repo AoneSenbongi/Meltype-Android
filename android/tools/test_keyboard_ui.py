@@ -98,7 +98,13 @@ capture("android-candidates.png")
 tap(find("content-desc", "候補 0"))
 tap(find("content-desc", "英語専用モードに切り替える"))
 mode = find("content-desc", "日英自動判別に戻る")
+assert find("content-desc", "句読点、文末はピリオド、長押しでピリオド").get("text") == ",", "English punctuation label is not comma"
 assert mode.get("text") == "ABC"
+tap(find("content-desc", "大文字・小文字を切り替える"))
+tap(find("content-desc", "a"))
+assert find("content-desc", "b").get("text") == "b", "Shift remained active after one character"
+tap(find("content-desc", "b"))
+assert find("resource-id", editor_id).get("text", "").endswith("Ab"), "Shift affected the second character"
 for letter in "abc":
     tap(find("content-desc", letter))
 assert find("resource-id", editor_id).get("text", "").endswith("abc"), "English mode is not direct input"
@@ -116,6 +122,7 @@ keys = {node.get("content-desc"): node for node in tree().iter("node") if node.g
 for letter in "warewarehautyuujinda":
     tap(keys[letter])
     time.sleep(.04)
+assert find("content-desc", "句読点、文末はピリオド、長押しでピリオド").get("text") == "．", "Sentence-ending punctuation label is not period"
 tap(find("content-desc", "空白・変換"))
 tap(find("content-desc", "候補 0"))
 assert find("resource-id", editor_id).get("text") == "我々は宇宙人だ", "Partial confirmation lost editor text"

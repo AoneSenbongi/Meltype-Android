@@ -59,6 +59,18 @@ internal static class CompositionTests
         public List<string> Events { get; } = [];
         public CompositionView? View { get; private set; }
         public bool PhysicalShift { get; set; }
+        public ReconversionSelection? Selection { get; set; }
+
+        public ReconversionSelection? GetReconversionSelection() => Selection;
+
+        public bool TryReplaceSelection(ReconversionSelection selection, string text)
+        {
+            if (!ReferenceEquals(Selection, selection)) return false;
+            Events.Add($"replace:{selection.Text}:{text}");
+            Selection = null;
+            Document = text;
+            return true;
+        }
 
         /// <summary>入力欄のキャレットの直前にある (と見なす) 確定済みの文字列。</summary>
         public string? PrecedingText { get; set; }
@@ -207,6 +219,7 @@ internal static class CompositionTests
         private bool Starts(KeyEvent k)
         {
             if (!k.IsDown || _ctrlHeld) return false;
+            if (k.Vk == VirtualKeys.Convert) return true;
             var letter = VirtualKeys.IsLetter(k.Vk);
             if (Direct) return letter && !_directEnglishWord && Level != Meltype.Config.DetectionLevel.Manual;
             if (Kana && Detection.KanaDetector.IsKanaKey(k.Vk)) return true;
@@ -262,6 +275,105 @@ internal static class CompositionTests
         }
 
         public string? Showing => Host.View?.Text;
+    }
+
+    [Test]
+    public static void Reconversion_ReplacesSelectedTextOnlyOnCommit()
+    {
+        var k = new Keyboard(direct: true);
+        var selection = new ReconversionSelection("今日", "きょう");
+        k.Host.Selection = selection;
+        k.Press(VirtualKeys.Convert);
+        Assert.True(k.Host.View?.Converting == true, "選択文字の候補を表示する");
+        Assert.True(ReferenceEquals(selection, k.Host.Selection), "確定前は選択文字を維持する");
+        Assert.Equal(0, k.Host.Output.Count);
+        var candidate = k.Showing;
+        k.Press(VirtualKeys.Return);
+        Assert.Equal(candidate, k.Host.Document);
+        Assert.True(k.Host.Events.Any(e => e.StartsWith("replace:今日:")), "選択範囲を置き換える");
+        Assert.True(!k.Gate.IsCaptured, "確定後はキーを解放する");
+    }
+
+    [Test]
+    public static void Reconversion_EscapeLeavesSelectionUntouched()
+    {
+        var k = new Keyboard();
+        var selection = new ReconversionSelection("今日", "きょう");
+        k.Host.Selection = selection;
+        k.Press(VirtualKeys.Convert);
+        k.Press(VirtualKeys.Escape);
+        Assert.True(ReferenceEquals(selection, k.Host.Selection), "Esc で元の選択文字が残る");
+        Assert.True(!k.Host.Events.Any(e => e.StartsWith("replace:")), "取消時は置換しない");
+        Assert.True(!k.Gate.IsCaptured, "取消後はキーを解放する");
+        k.Type("kana");
+        k.Press(VirtualKeys.Return);
+        Assert.True(k.Host.Output.Count > 0, "取消後も通常入力できる");
+    }
+
+    [Test]
+    public static void Reconversion_ChangedSelectionIsNotReplaced()
+    {
+        var k = new Keyboard();
+        k.Host.Selection = new ReconversionSelection("今日", "きょう");
+        k.Press(VirtualKeys.Convert);
+        k.Host.Selection = new ReconversionSelection("橋", "はし");
+        k.Press(VirtualKeys.Return);
+        Assert.True(!k.Host.Events.Any(e => e.StartsWith("replace:")), "別の選択範囲を置換しない");
+        Assert.Equal(0, k.Host.Output.Count);
+        Assert.True(!k.Gate.IsCaptured, "置換失敗後もキーを解放する");
+    }
+
+    [Test]
+    public static void Reconversion_WithoutSelectionDoesNothing()
+    {
+        var k = new Keyboard();
+        k.Press(VirtualKeys.Convert);
+        Assert.True(!k.Gate.IsCaptured, "選択文字なしでは変換を開始しない");
+        Assert.True(!k.Host.Events.Contains("down:1C"), "Windows IME に変換キーを渡さない");
+        Assert.Equal(0, k.Host.Output.Count);
+    }
+
+    [Test]
+    public static void Reconversion_DeletingReadingDoesNotAffectNextInput()
+    {
+        var k = new Keyboard();
+        k.Host.Selection = new ReconversionSelection("橋", "はし");
+        k.Press(VirtualKeys.Convert);
+        k.Press(VirtualKeys.Back); // 候補選択から読みの編集に戻る。
+        k.Press(VirtualKeys.Back);
+        k.Press(VirtualKeys.Back);
+        Assert.True(!k.Gate.IsCaptured, "読みを消し切ったら再変換を終了する");
+        k.Type("kana");
+        k.Press(VirtualKeys.Return);
+        Assert.True(!k.Host.Events.Any(e => e.StartsWith("replace:")), "次の入力に再変換の状態を持ち越さない");
+        Assert.True(k.Host.Output.Count > 0, "次の入力は普通に確定する");
+    }
+
+    [Test]
+    public static void Reconversion_FocusLossAbandonsWithoutReplacement()
+    {
+        var k = new Keyboard();
+        k.Host.Selection = new ReconversionSelection("今日", "きょう");
+        k.Press(VirtualKeys.Convert);
+        Assert.True(k.Controller.Abandon("フォーカスが変わった"), "再変換を破棄する");
+        k.Controller.Pump();
+        Assert.True(!k.Gate.IsCaptured, "フォーカス喪失後はキーを解放する");
+        Assert.True(!k.Host.Events.Any(e => e.StartsWith("replace:")), "フォーカス喪失時は置換しない");
+    }
+
+    [Test]
+    public static void ConvertKey_ConvertsInputAndCyclesCandidates()
+    {
+        var k = new Keyboard();
+        k.Type("hashi");
+        k.Press(VirtualKeys.Convert);
+        Assert.True(k.Host.View?.Converting == true, "変換キーで入力中の文字を変換する");
+        var first = k.Showing;
+        k.Press(VirtualKeys.Convert);
+        Assert.True(k.Showing != first, "変換キーで次の候補に進む");
+        var selected = k.Showing;
+        k.Press(VirtualKeys.Return);
+        Assert.Equal(selected, k.Host.Document);
     }
 
     [Test]
@@ -400,6 +512,7 @@ internal static class CompositionTests
         Assert.True(extra.Lookup("かちで").Contains("ガチで"), "かちで → ガチで");
         Assert.True(extra.Lookup("いんゆめ").Contains("淫夢"), "いんゆめ → 淫夢");
         Assert.True(extra.Lookup("いん").Contains("淫"), "文節が分かれた いん + ゆめ でも 淫夢 にできる");
+        Assert.True(extra.Lookup("おとこのこ").Contains("男の娘"), "おとこのこ → 男の娘");
     }
 
     [Test]

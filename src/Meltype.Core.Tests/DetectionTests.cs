@@ -163,6 +163,8 @@ internal static class DetectionTests
         Assert.Equal("きって", romaji.Analyze("kitte").Kana);
         Assert.Equal("まっちゃ", romaji.Analyze("matcha").Kana);
         Assert.Equal("しゅ", romaji.Analyze("syu").Kana);
+        Assert.Equal("し", romaji.AnalyzeFragment("ci").Kana);
+        Assert.True(!romaji.Analyze("ci").IsValid, "ci は変換ボックス専用");
         Assert.True(romaji.Analyze("ky").IsValid, "入力途中の子音は有効");
         Assert.True(!romaji.Analyze("th").IsValid, "th は不正");
         Assert.True(!romaji.Analyze("np").IsValid, "語頭の ん は不正");

@@ -13,7 +13,7 @@ public enum InputStyle
     /// <summary>ローマ字入力。</summary>
     [Description("ローマ字入力")] Romaji,
     /// <summary>JIS かな入力。</summary>
-    [Description("かな入力 (JIS)")] Kana,
+    [Description("かな入力 (JIS、α版)")] Kana,
     /// <summary>両方を判定する。</summary>
     [Description("両方を判定")] Both,
 }
@@ -212,7 +212,7 @@ public sealed class Settings
      Description("新しい版が公開されたら自動でダウンロードし、次に Meltype を起動したとき (Windows にサインインしたとき) に更新します。トレイの「更新して再起動」で今すぐ更新もできます。設定・学習データはそのまま残ります。")]
     public bool AutoUpdate { get; set; } = true;
 
-    [Category("1. 全般"), DisplayName("入力方式"), Description("ローマ字入力 / かな入力 (JIS) / 両方を判定。Meltype キーボードでは、かな入力を選ぶと JIS かな配列で入力し (Shift+E = ぃ, Shift+Z = っ, Shift+ね = 、)、打ったキーの英字が英単語なら英字で見せます。「両方を判定」は IME 自動切替のみ (Meltype キーボードではローマ字入力)。")]
+    [Category("1. 全般"), DisplayName("入力方式"), Description("ローマ字入力 / かな入力 (JIS、α版: 試験中) / 両方を判定。Meltype キーボードでは、かな入力を選ぶと JIS かな配列で入力し (Shift+E = ぃ, Shift+Z = っ, Shift+ね = 、)、打ったキーの英字が英単語なら英字で見せます。「両方を判定」は IME 自動切替のみ (Meltype キーボードではローマ字入力)。")]
     public InputStyle InputStyle { get; set; } = InputStyle.Romaji;
 
     [Category("2. 判定"), DisplayName("自動判定の強さ"),

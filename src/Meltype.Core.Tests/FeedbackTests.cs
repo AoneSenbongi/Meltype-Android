@@ -226,6 +226,34 @@ internal static class KanaInputTests
     }
 
     [Test]
+    public static void KanaInput_ShiftSmallKana_IsNotCapitalLetter()
+    {
+        // っ (Shift+Z)・ぃ (Shift+E) は、大文字で打った英語ではない (たのしかった が たのしかZq になっていた)
+        var k = Kana();
+        k.TypeKeys(KanaQualityTests.KeysFor("たのしかった"));
+        k.Type("\n");
+        Assert.Equal("たのしかった", k.Host.Document);
+    }
+
+    [Test]
+    public static void KanaInput_EnglishAfterJapanese()
+    {
+        // 日本語のすぐ後ろの英単語も英字にする (きょうは + google が きららきりい になっていた)
+        var k = Kana();
+        k.TypeKeys(KanaQualityTests.KeysFor("きょうは"));
+        k.TypeKanaKeys("google");
+        k.TypeKeys(KanaQualityTests.KeysFor("でけんさく"));
+        k.Type("\n");
+        Assert.Equal("きょうはgoogleでけんさく", k.Host.Document);
+
+        var after = Kana();
+        after.Host.PrecedingText = "今日は";
+        after.TypeKanaKeys("google");
+        after.Type("\n");
+        Assert.Equal("google", after.Host.Document, "確定済みの日本語の後ろ");
+    }
+
+    [Test]
     public static void KanaInput_FollowsLevels()
     {
         var manual = Kana(DetectionLevel.Manual);
