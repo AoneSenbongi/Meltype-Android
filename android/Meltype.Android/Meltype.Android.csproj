@@ -11,6 +11,7 @@
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <AndroidLinkMode>None</AndroidLinkMode>
     <RunAOTCompilation>false</RunAOTCompilation>
+    <AndroidEnableMarshalMethods>false</AndroidEnableMarshalMethods>
     <AndroidNeedsInternetPermission>false</AndroidNeedsInternetPermission>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using Meltype.Composition;
 using Meltype.Input;
+using Meltype.Config;
 
 namespace Meltype.AndroidCore;
 
@@ -18,11 +19,13 @@ public sealed class AndroidInputSession : ICompositionHost
     public CompositionView? View { get; private set; }
 
     public AndroidInputSession(IKanjiConverter converter, Func<string, IReadOnlyList<string>> candidates,
-        Action<int, string, CompositionView?> output)
+        Action<int, string, CompositionView?> output, Func<InputPreferences>? preferences = null, bool learningAllowed = true)
     {
         _output = output;
+        preferences ??= () => new InputPreferences();
         _controller = new CompositionController(_gate, CompositionDetector.CreateDefault(), converter, this,
-            new CompositionOptions { FullWidthCommaPeriod = true, LiveConversion = () => true,
+            new CompositionOptions { FullWidthCommaPeriod = true, Comma = () => preferences().Comma[0],
+                Period = () => preferences().Period[0], LearningEnabled = () => learningAllowed && preferences().LearningEnabled, LiveConversion = () => true,
                 MoreCandidates = candidates, AutoCorrect = () => false });
     }
 

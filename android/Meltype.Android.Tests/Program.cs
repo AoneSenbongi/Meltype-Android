@@ -3,6 +3,7 @@ using Meltype.AndroidCore;
 using Meltype.Composition;
 
 TypoTrainingTests.Run();
+InputSettingTests.Run();
 
 var cursorOperations = new List<int>();
 var cursorSession = new AndroidInputSession(new FakeConverter(), _ => [], (operation, _, _) => cursorOperations.Add(operation));

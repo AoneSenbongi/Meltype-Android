@@ -6,11 +6,13 @@ using Path = System.IO.Path;
 using Resource = Meltype.Android.Resource;
 using Android.OS;
 using Android.Provider;
+using Settings = Android.Provider.Settings;
 using Android.Text;
 using Android.Views;
 using Android.Views.InputMethods;
 using Android.Widget;
 using Meltype.AndroidCore;
+using Meltype.Config;
 
 namespace Meltype.Mobile;
 
@@ -22,6 +24,7 @@ namespace Meltype.Mobile;
 public sealed class MainActivity : Activity
 {
     private TextView? _setupStatus;
+    private Action? _refreshPreferences;
     private int Dp(float value) => MobileStyle.Dp(this, value);
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -51,15 +54,66 @@ public sealed class MainActivity : Activity
         }
         Add("1. キーボードを有効にする", () => StartActivity(new Intent(Settings.ActionInputMethodSettings)), true);
         Add("2. キーボードを選ぶ", () => ((InputMethodManager)GetSystemService(InputMethodService)!).ShowInputMethodPicker());
+        var preferences = new InputPreferenceStore(Path.Combine(FilesDir!.AbsolutePath, "input-preferences.json"));
+        layout.AddView(Label("日本語入力の句読点", 16, MobileStyle.Ink));
+        Spinner Choice(string title, string[] values)
+        {
+            layout.AddView(Label(title, 14, MobileStyle.Muted));
+            var spinner = new Spinner(this);
+            var adapter = new ArrayAdapter<string>(this, global::Android.Resource.Layout.SimpleSpinnerItem, values);
+            adapter.SetDropDownViewResource(global::Android.Resource.Layout.SimpleSpinnerDropDownItem);
+            spinner.Adapter = adapter; layout.AddView(spinner); return spinner;
+        }
+        var commas = new[] { "、", "，", "," }; var periods = new[] { "。", "．", "." };
+        var comma = Choice("読点", ["、（読点）", "，（全角カンマ）", ",（半角カンマ）"]);
+        var period = Choice("句点", ["。（句点）", "．（全角ピリオド）", ".（半角ピリオド）"]);
+        var learningStatus = Label("", 14, MobileStyle.Muted); layout.AddView(learningStatus);
+        Action? refreshCollection = null;
+        Button? learningButton = null;
+        void RefreshPreferences()
+        {
+            var settings = preferences.Current;
+            comma.SetSelection(Array.IndexOf(commas, settings.Comma));
+            period.SetSelection(Array.IndexOf(periods, settings.Period));
+            learningStatus.Text = settings.LearningEnabled ? "学習中" : "学習停止中 · 既存の辞書・履歴は残ります";
+            if (learningButton != null) learningButton.Text = settings.LearningEnabled ? "学習を停止" : "学習を再開";
+            refreshCollection?.Invoke();
+        }
+        Add("句読点を保存", () =>
+        {
+            try
+            {
+                preferences.Save(preferences.Current with { Comma = commas[comma.SelectedItemPosition], Period = periods[period.SelectedItemPosition] });
+                Toast.MakeText(this, "句読点を保存しました。次の入力から反映します。", ToastLength.Short)!.Show();
+            }
+            catch (IOException) { Toast.MakeText(this, "設定を保存できません。空き容量を確認してください。", ToastLength.Long)!.Show(); }
+        });
+        learningButton = Add("学習を停止", () =>
+        {
+            try
+            {
+                var current = preferences.Current;
+                preferences.Save(current with { LearningEnabled = !current.LearningEnabled });
+#if TRAINING_BUILD
+                if (current.LearningEnabled) new TypoTrainingStore(Path.Combine(FilesDir!.AbsolutePath, "typo-training")).Stop();
+#endif
+                RefreshPreferences();
+            }
+            catch (IOException) { Toast.MakeText(this, "設定を保存できません。空き容量を確認してください。", ToastLength.Long)!.Show(); }
+        });
+        _refreshPreferences = RefreshPreferences;
+        RefreshPreferences();
 #if TRAINING_BUILD
         var store = new TypoTrainingStore(Path.Combine(FilesDir!.AbsolutePath, "typo-training"));
         var collection = Label("", 14, MobileStyle.Ink); layout.AddView(collection);
-        void UpdateCollection() => collection.Text = store.Active
+        void UpdateCollection() => collection.Text = store.Active && preferences.Current.LearningEnabled
             ? $"収集中 · {store.Count}件 · {store.Until?.ToLocalTime():M月d日 HH:mm}まで"
             : $"収集停止中 · {store.Count}件";
+        refreshCollection = UpdateCollection;
         UpdateCollection();
         Add("7日間の収集を開始", () =>
         {
+            if (!preferences.Current.LearningEnabled) { Toast.MakeText(this, "先に学習を再開してください。", ToastLength.Short)!.Show(); return; }
             using var dialog = new AlertDialog.Builder(this);
             dialog.SetTitle("編集履歴を端末内に保存します");
             dialog.SetMessage("削除前と打ち直し後の最大64文字を記録します。機密情報を入力する時は停止してください。USBデバッグを許可したPCから取得できます。記録は自動修正に使いません。");
@@ -106,6 +160,7 @@ public sealed class MainActivity : Activity
     protected override void OnResume()
     {
         base.OnResume();
+        _refreshPreferences?.Invoke();
         var manager = (InputMethodManager)GetSystemService(InputMethodService)!;
         var enabled = manager.EnabledInputMethodList?.Any(method => method.PackageName == PackageName) == true;
         var selected = Settings.Secure.GetString(ContentResolver, Settings.Secure.DefaultInputMethod)?.StartsWith(PackageName + "/", StringComparison.Ordinal) == true;

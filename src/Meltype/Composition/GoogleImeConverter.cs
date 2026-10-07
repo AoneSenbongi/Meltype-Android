@@ -12,6 +12,8 @@ public sealed class GoogleImeConverter : IKanjiConverter, ILearningConverter
 {
     private readonly Func<byte[], byte[]> _transport;
     private readonly bool _learning;
+    public Func<bool> LearningEnabled { get; init; } = () => true;
+    private bool CanLearn => _learning && LearningEnabled();
     private readonly object _gate = new();
     private readonly Dictionary<string, IReadOnlyList<string>> _candidates = new(StringComparer.Ordinal);
 
@@ -59,7 +61,7 @@ public sealed class GoogleImeConverter : IKanjiConverter, ILearningConverter
         {
             session = Call(1, Proto.Blob(7, [])).Int(1);
             if (session == 0) return null;
-            Call(17, Proto.Blob(9, Proto.Number(23, _learning ? 0UL : 1UL))); // session-local incognito setting
+            Call(17, Proto.Blob(9, Proto.Number(23, CanLearn ? 0UL : 1UL))); // session-local incognito setting
             Command(22, Proto.Number(3, 1)); // private TURN_ON_IME, HIRAGANA
             var surrounding = string.IsNullOrEmpty(context) ? [] : Proto.Blob(6, Proto.String(1, context));
             var update = Proto.Number(1, 26).Concat(Proto.Blob(11, Proto.String(1, hiragana))).ToArray();
@@ -111,11 +113,12 @@ public sealed class GoogleImeConverter : IKanjiConverter, ILearningConverter
 
     internal bool TryLearn(string? context, IReadOnlyList<ConversionClause> clauses)
     {
-        if (!_learning || clauses.Count == 0) return false;
+        if (!CanLearn || clauses.Count == 0) return false;
         var reading = string.Concat(clauses.Select(c => c.Reading));
         if (reading.Length is 0 or > 100 || reading.Any(char.IsControl) || clauses.Any(c => c.Text.Length == 0 || c.Text.Any(char.IsControl))) return false;
         lock (_gate)
         {
+            if (!CanLearn) return false;
             ulong session = 0;
             var deadline = Stopwatch.StartNew();
             Proto Call(int kind, byte[]? payload = null, bool allowResult = false)
@@ -155,6 +158,7 @@ public sealed class GoogleImeConverter : IKanjiConverter, ILearningConverter
                 var selected = string.Concat(output.Message(5).Groups(2).Select(p => p.Text(4)));
                 var expected = string.Concat(clauses.Select(c => c.Text));
                 if (selected != expected) return false;
+                if (!CanLearn) return false;
                 var result = Call(5, Proto.Blob(4, Proto.Number(1, 2)), allowResult: true); // SUBMIT only after exact match
                 if (result.Message(4).Text(2) != expected) throw new InvalidOperationException("Google committed an unexpected candidate");
                 Call(8); // persist through Google's own server

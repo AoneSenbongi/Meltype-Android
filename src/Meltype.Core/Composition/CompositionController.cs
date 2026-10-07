@@ -66,6 +66,9 @@ public sealed record ReconversionSelection(string Text, string Reading);
 public sealed class CompositionOptions
 {
     public bool FullWidthCommaPeriod { get; init; }
+    public Func<char?> Comma { get; init; } = () => null;
+    public Func<char?> Period { get; init; } = () => null;
+    public Func<bool> LearningEnabled { get; init; } = () => true;
     /// <summary>打ったそばから漢字に変換して見せるか。</summary>
     public Func<bool> LiveConversion { get; init; } = () => false;
 
@@ -239,6 +242,8 @@ public sealed class CompositionController
         _host = host;
         _options = options ?? new CompositionOptions();
         _text.FullWidthCommaPeriod = _options.FullWidthCommaPeriod;
+        _text.Comma = _options.Comma;
+        _text.Period = _options.Period;
         _text.Level = () => _options.Level();
         _text.TypoCorrector = _options.RomajiTypos;
         // よく使う日本語の読み (kyouha = 今日は) は、一度英字にして確定しただけでは英語として覚えない。
@@ -1438,6 +1443,7 @@ public sealed class CompositionController
     /// </summary>
     private void LearnLanguage()
     {
+        if (!_options.LearningEnabled()) return;
         if (_options.Languages is not { } memory) return;
         var raw = _text.Raw;
         if (raw.Length < 2 || !raw.All(char.IsAsciiLetter)) return;
@@ -1513,6 +1519,7 @@ public sealed class CompositionController
     /// <summary>選び直した文節を学習する (次に同じ読みを変換したとき最初の候補にする)。</summary>
     private void Learn()
     {
+        if (!_options.LearningEnabled()) return;
         // 変換の候補から打ったままの英字 (api) を選んで確定したら、その語は次から英字にする (F10 と同じ)。
         foreach (var clause in _clauses.Where(c => !c.IsEnglish && c.Changed && c.Raw is { } raw && c.Text == raw))
         {
@@ -1548,6 +1555,7 @@ public sealed class CompositionController
     /// </summary>
     private void LearnConversion()
     {
+        if (!_options.LearningEnabled()) return;
         if (_converter is not ILearningConverter learner) return;
         var context = ConversionContext();
         var run = new List<ConversionClause>();
@@ -1556,7 +1564,7 @@ public sealed class CompositionController
             if (run.Count == 0) return;
             var clauses = run.ToList();
             run.Clear();
-            ThreadPool.QueueUserWorkItem(_ => learner.Learn(context, clauses));
+            ThreadPool.QueueUserWorkItem(_ => { if (_options.LearningEnabled()) learner.Learn(context, clauses); });
         }
         foreach (var clause in _clauses)
         {

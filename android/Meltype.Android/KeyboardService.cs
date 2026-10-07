@@ -11,6 +11,7 @@ using Android.Widget;
 using Keycode = Android.Views.Keycode;
 using Meltype.AndroidCore;
 using Meltype.Composition;
+using Meltype.Config;
 
 namespace Meltype.Mobile;
 
@@ -42,6 +43,8 @@ public sealed class KeyboardService : InputMethodService
     private bool _preeditActive;
     private int _generation;
     private int _jobGeneration;
+    private InputPreferenceStore? _preferences;
+    private char _punctuationInput = ',';
 #if TRAINING_BUILD
     private TypoTrainingStore? _trainingStore;
     private TypoEditCapture? _editCapture;
@@ -51,13 +54,14 @@ public sealed class KeyboardService : InputMethodService
     public override void OnCreate()
     {
         base.OnCreate();
+        _preferences = new InputPreferenceStore(System.IO.Path.Combine(FilesDir!.AbsolutePath, "input-preferences.json"));
 #if TRAINING_BUILD
         _trainingStore = new TypoTrainingStore(System.IO.Path.Combine(FilesDir!.AbsolutePath, "typo-training"));
         _editCapture = new TypoEditCapture((before, after) =>
         {
             _worker?.Post(() =>
             {
-                try { _trainingStore.Append(before, after); }
+                try { if (_preferences!.Current.LearningEnabled) _trainingStore.Append(before, after); }
                 catch (IOException)
                 {
                     try { _trainingStore.Stop(); } catch (IOException) { }
@@ -74,7 +78,8 @@ public sealed class KeyboardService : InputMethodService
             try
             {
                 var mozc = MozcJniBridge.Create(this);
-                _session = new AndroidInputSession(mozc, mozc.Candidates, Output);
+                mozc.LearningEnabled = () => _preferences.Current.LearningEnabled;
+                _session = new AndroidInputSession(mozc, mozc.Candidates, Output, () => _preferences.Current);
                 _main.Post(() => { _ready = true; Status(); });
             }
             catch (Exception) { _main.Post(() => Toast.MakeText(this, "変換エンジンを起動できません。入力方法を切り替えてください。", ToastLength.Long)!.Show()); }
@@ -137,7 +142,7 @@ public sealed class KeyboardService : InputMethodService
             var english = _english;
             Queue(() => _session?.SetEnglish(english)); Status();
         }, description: "英語専用モードに切り替える");
-        _punctuation = AddKey(controls, ",", () => Input(_punctuation?.Text == "．" ? '.' : ','));
+        _punctuation = AddKey(controls, ",", () => Input(_punctuationInput));
         _punctuation.ContentDescription = "句読点、文末はピリオド、長押しでピリオド";
         _punctuation.LongClick += (_, e) => { Input('.'); _shiftState.Reset(); Status(); e.Handled = true; };
         AddKey(controls, "空白", () => Input(' '), 3, description: "空白・変換");
@@ -187,7 +192,8 @@ public sealed class KeyboardService : InputMethodService
             _session?.Reset();
             // Fixed policy per editor: an asynchronous learn operation cannot inherit another field's policy.
             var mozc = MozcJniBridge.Create(this, learning: allowLearning);
-            _session = new AndroidInputSession(mozc, mozc.Candidates, Output);
+            mozc.LearningEnabled = () => _preferences!.Current.LearningEnabled;
+            _session = new AndroidInputSession(mozc, mozc.Candidates, Output, () => _preferences!.Current, allowLearning);
             _session.SetEnglish(english);
         }); Status();
     }
@@ -339,10 +345,12 @@ public sealed class KeyboardService : InputMethodService
     private void RefreshPunctuation()
     {
         if (_punctuation == null) return;
-        if (_restricted || _english) { _punctuation.Text = ","; return; }
+        if (_restricted || _english) { _punctuationInput = ','; _punctuation.Text = ","; return; }
         var text = _shownView?.Text;
         if (string.IsNullOrEmpty(text)) text = CurrentInputConnection?.GetTextBeforeCursor(128, (GetTextFlags)0);
-        _punctuation.Text = AndroidInputSession.PredictPunctuation(text, false) == '.' ? "．" : "，";
+        _punctuationInput = AndroidInputSession.PredictPunctuation(text, false);
+        var preferences = _preferences!.Current;
+        _punctuation.Text = _punctuationInput == '.' ? preferences.Period : preferences.Comma;
     }
     private void Status()
     {
@@ -365,7 +373,7 @@ public sealed class KeyboardService : InputMethodService
 
     private void CancelTouches() { foreach (var touch in _touches) touch.Cancel(); }
 #if TRAINING_BUILD
-    private bool Collecting() => _collectAllowed && _trainingStore?.Active == true;
+    private bool Collecting() => _collectAllowed && _trainingStore?.Active == true && _preferences?.Current.LearningEnabled == true;
     private void FinishTrainingQueued()
     {
         if (_editCapture?.Pending != true) return;

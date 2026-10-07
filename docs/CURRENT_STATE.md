@@ -6,6 +6,12 @@ Android版をPC版から分離して`AoneSenbongi/Meltype-Android`で開発・�
 
 ## 現在の作業
 
+2026年10月7日、読点「、／，／,」と句点「。／．／.」を個別に選ぶ設定、および学習停止・再開ボタンを通常版・学習用版へ追加した。英語入力は半角を維持し、既存の履歴を保持する。停止は新しい変換・日英学習と誤字収集を止める。再開だけでは誤字収集を始めない。仕様はdocs/INPUT_PREFERENCES.md。Windows側にも同じ設定を実装し、独立した作業先で検証した。
+
+接続したA142端末へ学習用APKをADBのUSB指定で上書き導入した。初回の起動ではJava／.NETのコールバック登録にUnsatisfiedLinkErrorが発生。Test-DeviceStartup.ps1で変換試験が完了しないことを再現し、AndroidEnableMarshalMethods=falseに変更してクリーンビルド後、上書きして同じ実機試験のPASSを確認した。設定画面の起動、JNI辞書、日英混在ライブ変換、句読点保持、Android試し書き欄の未確定反映と確定を検証した。設定画面を開いており、キーボードの有効化・選択と7日間の収集開始は利用者が操作する。収集を自動で開始していない。実際のキー操作による収集とUSB取得は未検証。
+
+追加後の共有コア197/197とAndroid入力処理試験が通過。句読点9組合せ、英語の半角維持、Mozc学習停止を検証した。通常版・学習用版のReleaseビルドは警告・エラーなし。今回の変更は未公開。
+
 2026年10月7日、Androidの誤字について、削除前と打ち直し後を取得し、USB接続時にPCへ取得して利用者が誤字でない記録を選ぶ方式を要求された。未判定の記録を自動修正へ適用しない。まず7日間を試用期間として提案し、開始は利用者の端末操作に限定した。
 
 通常版とは別パッケージ `jp.aonesenbongi.meltype.learning`、版名 `0.4.0-learning` の学習用APKをローカルで作成した。収集開始・停止・削除、7日後の停止、最大64文字ずつ・5000件の編集記録を実装。パスワード・数値等と学習禁止指定の欄は収集しない。入力先ごとに固定したMozc学習ポリシーの変換器を作り、学習禁止の欄では変換器の学習を停止する。初期状態は収集停止。通常版の設定画面には収集機能を出さない。
@@ -14,7 +20,7 @@ PCの `android/tools/typo_review.py` はUSB指定のADBを15秒ごとに確認�
 
 2026年10月7日の検証: 共有コア194/194、Android入力処理・収集のテスト、PC取得・重複除外・判定保存・書き出し・Webアクセス制限の4テストが通過。共有コア品質評価は1241/1243で既存の判定外れ2件（my name is taro、apinoerror）が残り、テストの許容条件は通過。通常版と学習用のReleaseビルドは警告・エラーなし。学習用Manifestの別ID・デバッグ可能・バックアップ禁止・権限宣言なし・BIND_INPUT_METHODと、通常版がデバッグ可能でないことを確認した。署名検証も通過。ブラウザーで試験データの「誤字ではない」保存と再読み込み後の保持を確認した。試験画像をREADMEへ埋め込んだ。
 
-学習用APKは `E:/Prog/Meltype/Android/distribution/learning-local/Meltype-Android-learning.apk`。SHA-256は `E74EF935DD3B12CDC0FB2ACA1FA27BBBC60C06D611A8D44B748EE98AFAD858F3`。通常版とは別の辞書・学習領域になる。接続端末はなく、実際の端末での編集収集・USB取得・感度は未検証。入力欄の表示文字の編集を収集するので、生のキー列や文脈の意味解析を収集・実行する機能ではない。入力欄やモードの切替、素早い連続入力、空白・句読点だけの修正を取得できない場合がある。次は端末接続後の学習用導入と収集・取得の実機確認。その後7日間の記録を利用者が確認し、修正機能の設計を行う。今回の変更は未公開で、push・Releaseは行っていない。
+学習用APKは `E:/Prog/Meltype/Android/distribution/learning-local/Meltype-Android-learning.apk`。SHA-256は `DD33AAF8B9C0872C3D433A41F25DD46FE2D17DD06C52E57E50C42BEA4936F49E`。通常版とは別の辞書・学習領域になる。A142へ導入済みで、実際のキー操作による編集収集・USB取得・感度は未検証。入力欄の表示文字の編集を収集するので、生のキー列や文脈の意味解析を収集・実行する機能ではない。入力欄やモードの切替、素早い連続入力、空白・句読点だけの修正を取得できない場合がある。次は利用者の有効化・選択・収集開始後の取得確認。その後7日間の記録を利用者が確認し、修正機能の設計を行う。今回の変更は未公開で、push・Releaseは行っていない。
 
 ## 公開済み0.4.0
 
@@ -82,6 +88,10 @@ READMEとSECURITYを0.3.0の実装に照合した。Androidのキーボード有
 
 調査専用作業先はE:/Prog/Meltype/Android/investigation-0.4.0、ブランチはinvestigate-startup-0.4.0。check_apk_jni.pyとCIのRebuild・APK検査追加、原因資料ANDROID_STARTUP_0_4_0.mdはローカルのみ。再ビルド候補はE:/Prog/Meltype/Android/distribution/0.4.0-investigation/rebuild-candidate.apk、SHA-256はC3AD312179776A0213F9C4CA7A11D4C3BE04D90F6A97EC724D421DE71E68A2D1。端末のクラッシュログと再ビルド候補の端末・エミュレーター起動は未確認。候補を公開・導入済みとは扱わない。公開0.4.0のReleaseとmainは今回変更していない。次は端末情報・起動ログを取得し、候補の起動とキーボード入力を確認する。他チャットの学習機能などの実装はこの調査に含めない。
 
-## 0.4.1の公開候補
+## 0.4.1の公開結果
 
-ユーザーが0.4.1として速やかな公開を指示したため、起動不具合対応だけを独立した調査ブランチで準備した。候補ソースは9e1428f8906da60a6453e55273f9303449bb91b9、配布先はE:/Prog/Meltype/Android/distribution/0.4.1-publish。APKのversionName=0.4.1、versionCode=5、SHA-256=8AFE1BFFEDD0343D40E7458A7923A2E4DD61E8FF1A4E55A1A864E0380AE91ACB、署名は公開0.3.0・0.4.0と同一。Rebuildは警告・エラーなしで、両ABIの起動用関数検査が通過した。端末・エミュレーター起動は未確認。APK・ハッシュ・ソースZIP・版情報・GPL・第三者通知・README・SECURITY・公開文の9点を準備済み。タイトルはMeltype Android 0.4.1、本文はdocs/ANDROID_RELEASE_0_4_1.md。ユーザーの今回の文言確認を受けてから専用mainへのpushとPre-release公開を実行する。新しい学習機能など他チャットの変更は含めない。
+2026年10月7日、ユーザーが公開本文・添付・公開先を確認して「iiyo」と承認したため、Meltype Android 0.4.1を公開した。公開先は https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-prototype-0.4.1 。draft=false、prerelease=true。専用mainとReleaseタグのソースは9e1428f8906da60a6453e55273f9303449bb91b9。
+
+APKのversionName=0.4.1、versionCode=5、SHA-256=8AFE1BFFEDD0343D40E7458A7923A2E4DD61E8FF1A4E55A1A864E0380AE91ACB。署名は公開0.3.0・0.4.0と同一。Rebuildは警告・エラーなしで、両ABIの起動用関数検査が通過した。承認したタイトル・本文と添付9点のsize・SHA-256 digestをGitHub APIで確認した。配布物はE:/Prog/Meltype/Android/distribution/0.4.1-publish、公開結果JSONはE:/Prog/Meltype/Android/tmp/release-0.4.1-published.json。
+
+端末・エミュレーターでの起動と入力は未確認。0.4.0で確認した起動用関数の欠落に対応した候補を公開したもので、ユーザー端末での解消確認とは区別する。アンインストール済みの端末では0.4.1を導入してキーボードを有効化・選択し直す。新しい学習機能など他チャットの変更は含めていない。独立した作業先はE:/Prog/Meltype/Android/investigation-0.4.0。この状態更新はローカルのみで追加pushしない。

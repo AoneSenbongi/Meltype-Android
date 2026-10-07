@@ -32,6 +32,8 @@ public sealed class CompositionText
     public CompositionText(CompositionDetector detector) => _detector = detector;
 
     public bool FullWidthCommaPeriod { get; set; }
+    public Func<char?> Comma { get; set; } = () => null;
+    public Func<char?> Period { get; set; } = () => null;
 
     public IReadOnlyList<CompositionUnit> Units => _units;
     public string Pending => _pending.ToString();
@@ -887,8 +889,8 @@ public sealed class CompositionText
     private char Symbol(char c) => c switch
     {
         '-' => 'ー',
-        ',' => FullWidthCommaPeriod ? '，' : '、',
-        '.' => FullWidthCommaPeriod ? '．' : '。',
+        ',' => Comma() ?? (FullWidthCommaPeriod ? '，' : '、'),
+        '.' => Period() ?? (FullWidthCommaPeriod ? '．' : '。'),
         '[' => '「',
         ']' => '」',
         // ASCII の括弧はチャット本文でもそのまま使われるため、入力した幅を保つ。
