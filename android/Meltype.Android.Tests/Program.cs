@@ -13,6 +13,7 @@ if (args is ["--import-dictionary", var source, var target])
 TypoTrainingTests.Run();
 InputSettingTests.Run();
 UserDictionaryTests.Run();
+BracketConversionTests.Run();
 
 var cursorOperations = new List<int>();
 var cursorSession = new AndroidInputSession(new FakeConverter(), _ => [], (operation, _, _) => cursorOperations.Add(operation));
@@ -52,6 +53,12 @@ shift.Consume();
 if (!shift.Locked) throw new Exception("Other action cleared Caps Lock.");
 shift.Toggle();
 if (shift.Active || shift.Locked) throw new Exception("Shift did not unlock capitals.");
+void ChoosePair(AndroidInputSession input, string pair)
+{
+    var quotes = "「『【".Contains(pair[0]);
+    input.BeginBracketConversion(quotes);
+    input.Select(Array.IndexOf(quotes ? new[] { "「」", "『』", "【】" } : new[] { "()", "{}", "[]" }, pair));
+}
 var modeOps = new List<(int Op, string Text)>();
 var modes = new AndroidInputSession(new FakeConverter(), _ => [], (op, text, _) => modeOps.Add((op,text)));
 foreach (var c in "nihongo") modes.Character(c);
@@ -59,18 +66,18 @@ modes.Character(' '); modeOps.Clear(); modes.ToggleKana();
 if (modes.View?.Text != "ニホンゴ" || !modes.Katakana || modeOps.Any(o => o.Op == 1)) throw new Exception("Kana toggle committed or lost text.");
 modes.ToggleKana();
 if (modes.View?.Text != "にほんご" || modes.Katakana) throw new Exception("Hiragana toggle failed.");
-modeOps.Clear(); modes.InsertBracketPair("()");
+modeOps.Clear(); ChoosePair(modes, "()");
 if (!modeOps.Any(o => o.Op == 1 && o.Text == "にほんご") || modeOps.Last() != (7,"()") || modes.View != null) throw new Exception("Bracket insertion did not preserve composition and move inside.");
-modes.SetEnglish(true); modeOps.Clear(); modes.InsertBracketPair("()");
+modes.SetEnglish(true); modeOps.Clear(); ChoosePair(modes, "()");
 if (modeOps.Last() != (7,"()")) throw new Exception("English bracket insertion failed.");
 foreach (var pair in new[] { "()", "「」", "{}", "[]", "【】", "『』" })
 {
     modes.SetEnglish(false); modes.Reset(); modeOps.Clear();
     foreach (var c in "nihongo") modes.Character(c);
-    modes.InsertBracketPair(pair);
+    ChoosePair(modes, pair);
     if (!modeOps.Any(o => o.Op == 1 && o.Text == "日本語") || modeOps.Last() != (7,pair) || modes.View != null)
         throw new Exception("Bracket pair did not preserve pending composition: " + pair);
-    modes.SetEnglish(true); modeOps.Clear(); modes.InsertBracketPair(pair);
+    modes.SetEnglish(true); modeOps.Clear(); ChoosePair(modes, pair);
     if (modeOps.Last() != (7,pair)) throw new Exception("English bracket pair failed: " + pair);
 }
 Console.WriteLine("PASS: Caps Lock, kana toggle without confirmation, all six bracket pairs after composition");

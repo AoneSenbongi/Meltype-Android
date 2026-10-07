@@ -8,8 +8,13 @@ ADB = 'E:/Prog/Meltype/Android/android-sdk/platform-tools/adb.exe'
 PACKAGE = 'jp.aonesenbongi.meltype.learning'
 def adb(*args): return subprocess.check_output([ADB, '-d', *args])
 def tree():
-    adb('shell', 'uiautomator', 'dump', '--windows', '/sdcard/meltype-editor-test.xml')
-    return ET.fromstring(adb('shell', 'cat', '/sdcard/meltype-editor-test.xml'))
+    for attempt in range(3):
+        try:
+            adb('shell', 'uiautomator', 'dump', '--windows', '/sdcard/meltype-editor-test.xml')
+            return ET.fromstring(adb('shell', 'cat', '/sdcard/meltype-editor-test.xml'))
+        except subprocess.CalledProcessError:
+            if attempt == 2: raise
+            time.sleep(.3)
 def edges(node): return list(map(int, re.findall(r'\d+', node.get('bounds'))))
 adb('shell', 'am', 'force-stop', PACKAGE)
 adb('shell', 'am', 'start', '-n', PACKAGE + '/jp.aonesenbongi.meltype.MainActivity')

@@ -39,7 +39,7 @@ public sealed class KeyboardService : InputMethodService
     private Button? _hide;
     private LinearLayout? _keyRows;
     private bool _symbols;
-    private bool _shownKatakana;
+    private bool _shownKatakana, _choosingBrackets;
     private readonly List<(Button Key, char Letter)> _letters = [];
     private bool _english, _restricted, _ready;
     private bool _preeditActive;
@@ -115,7 +115,7 @@ public sealed class KeyboardService : InputMethodService
         CancelTouches();
         _touches.Clear();
         _keyRows.RemoveAllViews(); _letters.Clear(); _shift = null;
-        foreach (var row in _symbols ? new[] { "1234567890", "@#¥%&-+()/", "「」.,?!:;\"", "{}[]【】『』" } : new[] { "qwertyuiop", "asdfghjkl-", "zxcvbnm" })
+        foreach (var row in _symbols ? new[] { "1234567890", "@#¥%&-+(/", "「.,?!:;\"" } : new[] { "qwertyuiop", "asdfghjkl-", "zxcvbnm" })
         {
             var line = new LinearLayout(this) { BaselineAligned = false };
             var shortRow = row.Length == 7;
@@ -126,13 +126,13 @@ public sealed class KeyboardService : InputMethodService
             }
             foreach (var c in row)
             {
-                var pair = c switch { '(' => "()", '「' => "「」", '{' => "{}", '[' => "[]", '【' => "【】", '『' => "『』", _ => null };
-                var key = pair != null ? AddKey(line, pair, () => InsertBracketPair(pair), description: "括弧 " + pair + "を入力して内側へ移動")
+                var pair = c switch { '(' => "()", '「' => "「」", _ => null };
+                var key = pair != null ? AddKey(line, pair, () => BeginBrackets(pair), description: "括弧 " + pair + "の種類を選ぶ")
                     : AddKey(line, c.ToString(), () => Input(_shiftState.Apply(c)));
                 if (char.IsLetter(c)) _letters.Add((key, c));
             }
             if (shortRow) AddKey(line, "⌫", () => Special(0x08), 1.5f, description: "削除、長押しで連続削除", repeat: true);
-            else if (_symbols && row.StartsWith('{')) AddKey(line, "⌫", () => Special(0x08), description: "削除、長押しで連続削除", repeat: true);
+            else if (_symbols && row.StartsWith('「')) AddKey(line, "⌫", () => Special(0x08), description: "削除、長押しで連続削除", repeat: true);
             _keyRows.AddView(line);
         }
         var controls = new LinearLayout(this) { BaselineAligned = false };
@@ -143,7 +143,7 @@ public sealed class KeyboardService : InputMethodService
             _editCapture?.Cancel();
 #endif
             if (_restricted || !_ready) return;
-            if (!_english && !string.IsNullOrEmpty(_shownView?.Text))
+            if (!_english && !_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text))
             { Queue(() => _session?.ToggleKana()); return; }
             _english = !_english;
             var english = _english;
@@ -177,7 +177,7 @@ public sealed class KeyboardService : InputMethodService
         base.OnStartInput(attribute, restarting);
         CancelTouches();
         Interlocked.Increment(ref _generation);
-        _preeditActive = false; _shownView = null; _shiftState.Reset();
+        _preeditActive = false; _shownView = null; _choosingBrackets = false; _shiftState.Reset();
         var type = attribute?.InputType ?? InputTypes.Null;
         var inputClass = type & InputTypes.MaskClass;
         var variation = type & InputTypes.MaskVariation;
@@ -211,7 +211,7 @@ public sealed class KeyboardService : InputMethodService
 #endif
         CancelTouches();
         CurrentInputConnection?.FinishComposingText();
-        _preeditActive = false; _shownView = null; _shiftState.Reset();
+        _preeditActive = false; _shownView = null; _choosingBrackets = false; _shiftState.Reset();
         Interlocked.Increment(ref _generation);
         _worker?.Post(() => _session?.Reset());
         _candidates?.RemoveAllViews(); base.OnFinishInput();
@@ -292,6 +292,7 @@ public sealed class KeyboardService : InputMethodService
     {
         var generation = _jobGeneration;
         var katakana = _session?.Katakana == true;
+        var choosingBrackets = _session?.ChoosingBrackets == true;
         _main!.Post(() =>
         {
             if (generation != Volatile.Read(ref _generation)) return;
@@ -307,7 +308,7 @@ public sealed class KeyboardService : InputMethodService
             else if (operation == 4) Enter();
             else if (operation == 7) { editor.CommitText(text, 1); _preeditActive = false; MoveCursor(Keycode.DpadLeft); }
             else if (operation is 5 or 6) MoveCursor(operation == 5 ? Keycode.DpadLeft : Keycode.DpadRight);
-            _shownView = view; _shownKatakana = katakana; Status();
+            _shownView = view; _shownKatakana = katakana; _choosingBrackets = choosingBrackets; Status();
             if (_hide != null) _hide.Visibility = view is { Candidates.Count: > 0 } ? ViewStates.Gone : ViewStates.Visible;
             var signature = view == null ? "" : string.Join('\0', view.Candidates.Take(24)) + "\u0001" + view.SelectedIndex;
             if (_candidateSignature == signature) return;
@@ -331,13 +332,13 @@ public sealed class KeyboardService : InputMethodService
                 }
         });
     }
-    private void InsertBracketPair(string pair)
+    private void BeginBrackets(string pair)
     {
 #if TRAINING_BUILD
         FinishTrainingQueued();
 #endif
         if (_restricted) { CurrentInputConnection?.CommitText(pair, 1); MoveCursor(Keycode.DpadLeft); return; }
-        Queue(() => _session?.InsertBracketPair(pair));
+        Queue(() => _session?.BeginBracketConversion(pair == "「」"));
     }
     private void MoveCursor(Keycode code)
     {
@@ -377,7 +378,7 @@ public sealed class KeyboardService : InputMethodService
         RefreshPunctuation();
         if (_mode != null)
         {
-            var pending = !_restricted && !_english && !string.IsNullOrEmpty(_shownView?.Text);
+            var pending = !_restricted && !_english && !_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text);
             _mode.Text = pending ? (_shownKatakana ? "かな" : "カナ") : _restricted || _english ? "英語" : "自動";
             _mode.ContentDescription = pending ? (_shownKatakana ? "未確定文字をひらがなにする" : "未確定文字をカタカナにする") : _english ? "日英自動判別に戻る" : "英語専用モードに切り替える";
             _mode.Enabled = _ready && !_restricted;

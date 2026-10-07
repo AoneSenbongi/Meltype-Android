@@ -1,4 +1,4 @@
-"""Exercise the requested keyboard actions in the app's non-learning trial field."""
+"""Exercise the requested keyboard actions in the app's trial field."""
 import runpy
 import time
 from pathlib import Path
@@ -25,16 +25,19 @@ tap('a'); tap('b')
 assert text() == 'AB', 'Caps Lock did not persist'
 tap('大文字固定を解除'); tap('c')
 assert text() == 'ABc', 'Caps Lock did not release'
-tap('数字・記号と英字配列を切り替える'); tap('括弧 ()を入力して内側へ移動')
-tap('数字・記号と英字配列を切り替える'); tap('x')
-assert text() == 'ABc(x)', 'Bracket cursor did not move inside'
-expected = 'ABc(x'
-for pair in ('「」', '{}', '[]', '【】', '『』'):
+expected = 'ABc'
+for pair in ('()', '「」', '{}', '[]', '【】', '『』'):
     tap('数字・記号と英字配列を切り替える')
-    tap('括弧 ' + pair + 'を入力して内側へ移動')
+    group = '「」' if pair[0] in '「【『' else '()'
+    tap('括弧 ' + group + 'の種類を選ぶ')
+    index = ('「」','『』','【】').index(pair) if group == '「」' else ('()','{}','[]').index(pair)
+    assert find('候補 ' + str(index)).get('text') == pair, 'Bracket candidate missing'
+    if pair == '{}':
+        tap('空白・変換'); tap('確定・改行')
+    else: tap('候補 ' + str(index))
     tap('数字・記号と英字配列を切り替える'); tap('x')
     expected += pair[0] + 'x'
-assert text() == expected + '』】]}」)', 'Nested bracket cursors did not move inside all six pairs'
+assert text() == expected + '』】]}」)', 'Grouped bracket cursors did not move inside all six pairs'
 
 tap('数字・記号と英字配列を切り替える'); tap('キーボードを閉じる')
 root = tree(); editor = next(n for n in root.iter('node') if n.get('resource-id') == package + ':id/test_editor')

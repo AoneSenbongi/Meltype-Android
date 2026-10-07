@@ -20,13 +20,29 @@ public sealed class AndroidInputSession : ICompositionHost
     public bool Katakana { get; private set; }
     public void ToggleKana()
     {
-        if (_english || string.IsNullOrEmpty(View?.Text)) return;
+        if (_english || ChoosingBrackets || string.IsNullOrEmpty(View?.Text)) return;
         Katakana = !Katakana;
         Key(Katakana ? 0x76 : 0x75);
     }
-    public void InsertBracketPair(string pair)
+    private string[]? _brackets;
+    private int _bracketIndex;
+    public bool ChoosingBrackets => _brackets != null;
+    public void BeginBracketConversion(bool quotes)
     {
-        _controller.CommitPending();
+        Commit();
+        _brackets = quotes ? ["「」", "『』", "【】"] : ["()", "{}", "[]"];
+        _bracketIndex = 0;
+        ShowBrackets();
+    }
+    private void ShowBrackets()
+    {
+        View = new CompositionView(_brackets![_bracketIndex], _brackets, _bracketIndex, true, "Space 切替　Enter 確定");
+        _output(0, View.Text, View);
+    }
+    private void CommitBracket()
+    {
+        var pair = _brackets![_bracketIndex];
+        _brackets = null; View = null;
         _output(7, pair, null);
     }
 
@@ -46,12 +62,17 @@ public sealed class AndroidInputSession : ICompositionHost
     public void SetEnglish(bool english)
     {
         if (_english == english) return;
-        _controller.CommitPending();
+        Commit();
         _english = english;
     }
 
     public void Character(char character)
     {
+        if (ChoosingBrackets)
+        {
+            if (character == ' ') { Key(0x20); return; }
+            CommitBracket();
+        }
         if (_english) { CommitText(character.ToString()); return; }
         Key(character switch
     {
@@ -72,6 +93,14 @@ public sealed class AndroidInputSession : ICompositionHost
 
     public void Key(int code, char? character = null)
     {
+        if (ChoosingBrackets)
+        {
+            if (code is 0x08 or 0x1B) { _brackets = null; Hide(); return; }
+            if (code == 0x0D) { CommitBracket(); return; }
+            if (code is 0x20 or 0x25 or 0x27)
+            { _bracketIndex = (_bracketIndex + (code == 0x25 ? 2 : 1)) % _brackets!.Length; ShowBrackets(); return; }
+            CommitBracket();
+        }
         if (code is 0x25 or 0x27 && string.IsNullOrEmpty(View?.Text))
         {
             _output(code == 0x25 ? 5 : 6, "", null); return;
@@ -92,13 +121,15 @@ public sealed class AndroidInputSession : ICompositionHost
 
     public void Select(int index)
     {
+        if (ChoosingBrackets)
+        { if (index >= 0 && index < _brackets!.Length) { _bracketIndex = index; CommitBracket(); } return; }
         if (View is not { } view || index < 0 || index >= view.Candidates.Count) return;
         if (view.Converting) _controller.SelectCandidate(index);
         else if (!_controller.SelectLiveCandidate(view.SelectedClause, view.Candidates[index])) return;
         _controller.CommitSelectedPrefix();
     }
-    public void Commit() => _controller.CommitPending();
-    public void Reset() { _controller.Reset(); _controller.ResetContext(); _gate.Abort(); Katakana = false; View = null; }
+    public void Commit() { if (ChoosingBrackets) CommitBracket(); else _controller.CommitPending(); }
+    public void Reset() { _controller.Reset(); _controller.ResetContext(); _gate.Abort(); _brackets = null; Katakana = false; View = null; }
     public void CommitText(string text) => _output(1, text, null);
     public void Show(CompositionView view)
     {
