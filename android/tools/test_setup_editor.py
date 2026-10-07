@@ -1,12 +1,16 @@
 """Verify the learning app's complete trial editor remains above its keyboard."""
 import re
+import os
 import subprocess
 import time
 import xml.etree.ElementTree as ET
 
 ADB = 'E:/Prog/Meltype/Android/android-sdk/platform-tools/adb.exe'
 PACKAGE = 'jp.aonesenbongi.meltype.learning'
-def adb(*args): return subprocess.check_output([ADB, '-d', *args])
+def adb(*args):
+    serial = os.environ.get('MELTYPE_TEST_SERIAL')
+    target = ['-s',serial] if serial else ['-d']
+    return subprocess.check_output([ADB, *target, *args])
 def tree():
     for attempt in range(3):
         try:
@@ -18,15 +22,19 @@ def tree():
 def edges(node): return list(map(int, re.findall(r'\d+', node.get('bounds'))))
 adb('shell', 'am', 'force-stop', PACKAGE)
 adb('shell', 'am', 'start', '-n', PACKAGE + '/jp.aonesenbongi.meltype.MainActivity')
-adb('shell', 'ime', 'set', PACKAGE + '/crc64cc9ac1f257f62241.KeyboardService')
 time.sleep(.5)
-root = tree()
-scroll = next(n for n in root.iter('node') if n.get('package') == PACKAGE and n.get('class') == 'android.widget.ScrollView')
+for attempt in range(5):
+    root = tree()
+    scroll = next((n for n in root.iter('node') if n.get('package') == PACKAGE and n.get('class') == 'android.widget.ScrollView'), None)
+    if scroll is not None: break
+    time.sleep(.5)
+else: raise AssertionError('Settings screen did not finish opening')
 l,t,r,b = edges(scroll); x = (l+r)//2
 adb('shell','input','swipe',str(x),str(t+(b-t)*3//4),str(x),str(t+(b-t)*1//4),'350')
 root = tree()
 editor = next(n for n in root.iter('node') if n.get('resource-id') == PACKAGE + ':id/test_editor')
 l,t,r,b = edges(editor)
+adb('shell', 'ime', 'set', PACKAGE + '/crc64cc9ac1f257f62241.KeyboardService')
 adb('shell','input','tap',str((l+r)//2),str((t+b)//2))
 time.sleep(1)
 root = tree()

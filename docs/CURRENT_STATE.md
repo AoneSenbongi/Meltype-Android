@@ -6,7 +6,11 @@ Android版をPC版から分離して`AoneSenbongi/Meltype-Android`で開発・�
 
 ## 現在の作業
 
-UI画像の依頼に対し、端末未接続・エミュレーターなしを確認。配列・寸法・色に合わせて描画した参考プレビューをdocs/images/android-keyboard-hints-preview.pngへ保存し、実機スクリーンショットではない旨を明記してREADMEへ埋め込んだ。字体とアイコンの形はAndroid実機と異なる場合がある。アプリとAPKは変更していない。
+2026年10月8日、利用者の指示でAndroid Emulator 37.2.12の安定版とAndroid 15（API 35）Google APIs x86_64をEドライブへ導入。公式配布XMLのサイズとSHA-1照合が通過。SDK ManagerのJava経由の取得が進まなかったため、同じ公式配布物を取得・検証してSDKへ登録した。WHPXの使用可能チェックと仮想端末Meltype_API35（Pixel 7）の起動が通過。SDKはE:/Prog/Meltype/Android/android-sdk、AVDはE:/Prog/Meltype/Android/android-home/avd。起動用はandroid/tools/Start-AndroidEmulator.cmdと.ps1。Cへ大きなイメージを作らない。仕様はdocs/ANDROID_EMULATOR.md。
+
+「!」「?」は記号配列の削除キーの左隣と、長押しのN・Mへ揃えた。移動前の長押し「;」と引用符はZ・Xへ入れ替え、括弧の一括入力を維持。入力処理の回帰試験と学習用Releaseビルド（警告・エラーなし）、署名検査が通過。更新APKはE:/Prog/Meltype/Android/distribution/learning-emulator-20261008/Meltype-Android-learning.apk。仮想端末のみへ導入し、実機には導入していない。
+
+操作試験をMELTYPE_TEST_SERIALでエミュレーターへ指定できるようにした。仮想端末初回起動の待機と、アプリ強制終了によるIMEの切替が終わってから選択する試験手順へ修正。長押しの重複防止と右端の「!」「?」、カーソル移動、クリップボード一覧の開閉、コピーした固定試験文字の選択と貼り付け、全半角10種類の括弧内入力、Enter後の配列復帰、Caps Lockと解除、カナ／かな、閉じた後の通常配列がエミュレーターで通過。確認用文字のみを使い、個人辞書・履歴をコピーせず、誤字・句読点の収集も開始していない。起動時の沈み込みと白い点滅の実機での解消は未確認。公開は行わない。 エミュレーター限定のコピー→空欄へ貼り付けの自動試験も通過。実際の画面をdocs/images/android-emulator-romaji.pngとandroid-emulator-symbols.pngへ撮影し、READMEの参考プレビューと旧画面の表示を置き換えた。撮影画像に個人の辞書・履歴を含めない。確認後は仮想端末を停止する。
 
 2026年10月8日、Gboardの参考画像を受け、長押し記号の表示だけを調整。右上の24×18dp領域、端から4dp、11spとし、フォント上下の余白を外した。利用者の指示に従い、従来の記号割り当て・括弧の一括入力・キーの位置と寸法を維持する。入力処理の回帰試験とソース検査2件が通過。学習用APKのReleaseビルドは警告・エラーなしで通過し、署名検査も通過。保存先はE:\Prog\Meltype\Android\distribution\learning-ui-hints-20261008。SHA-256はc33813e4938ee61272e98166f9a0eca2651998aee3b1648c8aab70706c2fd900。実機の表示は未確認。端末への導入とGitHub公開は行わない。READMEと表示仕様を更新。
 

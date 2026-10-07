@@ -4,7 +4,7 @@ internal static class KeyboardInteractionTests
 {
     public static void Run()
     {
-        if(KeyboardSymbols.For('q')!="1" || KeyboardSymbols.For('p')!="0" || KeyboardSymbols.For('k')!="(" || KeyboardSymbols.For('c')!="「」" || KeyboardSymbols.For('-')!="_") throw new Exception("Long press mapping failed");
+        if(KeyboardSymbols.For('q')!="1" || KeyboardSymbols.For('p')!="0" || KeyboardSymbols.For('k')!="(" || KeyboardSymbols.For('c')!="「」" || KeyboardSymbols.For('-')!="_" || KeyboardSymbols.For('m')!="?" || KeyboardSymbols.For('n')!="!" || KeyboardSymbols.For('z')!=";" || KeyboardSymbols.For('x')!="\"") throw new Exception("Long press mapping failed");
         var taps = 0; var holds = 0;
         var gesture = new SymbolPress(() => taps++, () => holds++);
         gesture.Down(); gesture.Up(); gesture.Hold();

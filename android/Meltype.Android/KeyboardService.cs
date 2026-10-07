@@ -123,7 +123,7 @@ public sealed class KeyboardService : InputMethodService
         _clipboardOpen = false;
         _touches.Clear();
         _keyRows.RemoveAllViews(); _letters.Clear(); _shift = null;
-        foreach (var row in _symbols ? new[] { "1234567890", "@#¥%&-+(/", "「.,?!:;\"" } : new[] { "qwertyuiop", "asdfghjkl-", "zxcvbnm" })
+        foreach (var row in _symbols ? new[] { "1234567890", "@#¥%&-+(/", "「.,:;\"!?" } : new[] { "qwertyuiop", "asdfghjkl-", "zxcvbnm" })
         {
             var line = new LinearLayout(this) { BaselineAligned = false };
             var shortRow = row.Length == 7;

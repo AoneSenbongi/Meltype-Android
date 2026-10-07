@@ -24,7 +24,7 @@ public static class KeyboardSymbols
     {
         >= 'a' and <= 'z' when "qwertyuiop".Contains(c) => "1234567890"["qwertyuiop".IndexOf(c)].ToString(),
         >= 'a' and <= 'z' when "asdfghjkl".Contains(c) => "@#¥%&-+()"["asdfghjkl".IndexOf(c)].ToString(),
-        >= 'a' and <= 'z' when "zxcvbnm".Contains(c) => new[]{"!","?","「」","/",":",";","\""}["zxcvbnm".IndexOf(c)],
+        >= 'a' and <= 'z' when "zxcvbnm".Contains(c) => new[]{";","\"","「」","/",":","!","?"}["zxcvbnm".IndexOf(c)],
         '-' => "_", _ => null
     };
 }
