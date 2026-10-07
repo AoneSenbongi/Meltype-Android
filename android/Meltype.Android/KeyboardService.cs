@@ -39,6 +39,7 @@ public sealed class KeyboardService : InputMethodService
     private Button? _hide;
     private LinearLayout? _keyRows;
     private bool _symbols;
+    private bool _shownKatakana;
     private readonly List<(Button Key, char Letter)> _letters = [];
     private bool _english, _restricted, _ready;
     private bool _preeditActive;
@@ -114,7 +115,7 @@ public sealed class KeyboardService : InputMethodService
         CancelTouches();
         _touches.Clear();
         _keyRows.RemoveAllViews(); _letters.Clear(); _shift = null;
-        foreach (var row in _symbols ? new[] { "1234567890", "@#¥%&-+()/", "「」.,?!:;\"" } : new[] { "qwertyuiop", "asdfghjkl-", "zxcvbnm" })
+        foreach (var row in _symbols ? new[] { "1234567890", "@#¥%&-+()/", "「」.,?!:;\"", "{}[]【】『』" } : new[] { "qwertyuiop", "asdfghjkl-", "zxcvbnm" })
         {
             var line = new LinearLayout(this) { BaselineAligned = false };
             var shortRow = row.Length == 7;
@@ -125,11 +126,13 @@ public sealed class KeyboardService : InputMethodService
             }
             foreach (var c in row)
             {
-                var key = AddKey(line, c.ToString(), () => Input(_shiftState.Apply(c)));
+                var pair = c switch { '(' => "()", '「' => "「」", '{' => "{}", '[' => "[]", '【' => "【】", '『' => "『』", _ => null };
+                var key = pair != null ? AddKey(line, pair, () => InsertBracketPair(pair), description: "括弧 " + pair + "を入力して内側へ移動")
+                    : AddKey(line, c.ToString(), () => Input(_shiftState.Apply(c)));
                 if (char.IsLetter(c)) _letters.Add((key, c));
             }
             if (shortRow) AddKey(line, "⌫", () => Special(0x08), 1.5f, description: "削除、長押しで連続削除", repeat: true);
-            else if (_symbols && row.StartsWith('「')) AddKey(line, "⌫", () => Special(0x08), description: "削除、長押しで連続削除", repeat: true);
+            else if (_symbols && row.StartsWith('{')) AddKey(line, "⌫", () => Special(0x08), description: "削除、長押しで連続削除", repeat: true);
             _keyRows.AddView(line);
         }
         var controls = new LinearLayout(this) { BaselineAligned = false };
@@ -140,13 +143,15 @@ public sealed class KeyboardService : InputMethodService
             _editCapture?.Cancel();
 #endif
             if (_restricted || !_ready) return;
+            if (!_english && !string.IsNullOrEmpty(_shownView?.Text))
+            { Queue(() => _session?.ToggleKana()); return; }
             _english = !_english;
             var english = _english;
             Queue(() => _session?.SetEnglish(english)); Status();
         }, description: "英語専用モードに切り替える");
         _punctuation = AddKey(controls, ",", () => Input(_punctuationInput));
         _punctuation.ContentDescription = "句読点、文末はピリオド、長押しでピリオド";
-        _punctuation.LongClick += (_, e) => { Input('.'); _shiftState.Reset(); Status(); e.Handled = true; };
+        _punctuation.LongClick += (_, e) => { Input('.'); _shiftState.Consume(); Status(); e.Handled = true; };
         AddKey(controls, "空白", () => Input(' '), 3, description: "空白・変換");
         AddKey(controls, "←", () => Special(0x25), description: "左へ移動");
         AddKey(controls, "→", () => Special(0x27), description: "右へ移動");
@@ -157,7 +162,7 @@ public sealed class KeyboardService : InputMethodService
     {
         var key = new Button(this) { Text = label, TextSize = label.Length > 1 ? 13 : 20, ContentDescription = description ?? label };
         key.SetSingleLine(true);
-        MobileStyle.KeyboardKey(key, function: label.Length > 1 || label is "⇧" or "⌫" or "↵" or "←" or "→"); Action invoke = () => { action(); if (label != "⇧") { _shiftState.Reset(); Status(); } };
+        MobileStyle.KeyboardKey(key, function: label.Length > 1 || label is "⇧" or "⌫" or "↵" or "←" or "→"); Action invoke = () => { action(); if (label != "⇧") { _shiftState.Consume(); Status(); } };
         key.Click += (_, _) => invoke();
         if (label != ",")
         {
@@ -214,7 +219,9 @@ public sealed class KeyboardService : InputMethodService
     }
     public override void OnFinishInputView(bool finishingInput)
     {
-        CancelTouches(); base.OnFinishInputView(finishingInput);
+        CancelTouches(); _shiftState.Reset();
+        if (_symbols) { _symbols = false; BuildKeyRows(); }
+        Status(); base.OnFinishInputView(finishingInput);
     }
     public override void OnUpdateSelection(int oldSelStart, int oldSelEnd, int newSelStart, int newSelEnd, int candidatesStart, int candidatesEnd)
     {
@@ -284,6 +291,7 @@ public sealed class KeyboardService : InputMethodService
     private void Output(int operation, string text, CompositionView? view)
     {
         var generation = _jobGeneration;
+        var katakana = _session?.Katakana == true;
         _main!.Post(() =>
         {
             if (generation != Volatile.Read(ref _generation)) return;
@@ -297,8 +305,9 @@ public sealed class KeyboardService : InputMethodService
             }
             else if (operation == 3) editor.DeleteSurroundingTextInCodePoints(int.Parse(text), 0);
             else if (operation == 4) Enter();
+            else if (operation == 7) { editor.CommitText(text, 1); _preeditActive = false; MoveCursor(Keycode.DpadLeft); }
             else if (operation is 5 or 6) MoveCursor(operation == 5 ? Keycode.DpadLeft : Keycode.DpadRight);
-            _shownView = view; RefreshPunctuation();
+            _shownView = view; _shownKatakana = katakana; Status();
             if (_hide != null) _hide.Visibility = view is { Candidates.Count: > 0 } ? ViewStates.Gone : ViewStates.Visible;
             var signature = view == null ? "" : string.Join('\0', view.Candidates.Take(24)) + "\u0001" + view.SelectedIndex;
             if (_candidateSignature == signature) return;
@@ -316,11 +325,19 @@ public sealed class KeyboardService : InputMethodService
 #if TRAINING_BUILD
                         FinishTrainingQueued();
 #endif
-                        _shiftState.Reset(); Status(); Queue(() => _session?.Select(index));
+                        _shiftState.Consume(); Status(); Queue(() => _session?.Select(index));
                     };
                     _candidates.AddView(button, new LinearLayout.LayoutParams(-2, Dp(42)));
                 }
         });
+    }
+    private void InsertBracketPair(string pair)
+    {
+#if TRAINING_BUILD
+        FinishTrainingQueued();
+#endif
+        if (_restricted) { CurrentInputConnection?.CommitText(pair, 1); MoveCursor(Keycode.DpadLeft); return; }
+        Queue(() => _session?.InsertBracketPair(pair));
     }
     private void MoveCursor(Keycode code)
     {
@@ -360,12 +377,15 @@ public sealed class KeyboardService : InputMethodService
         RefreshPunctuation();
         if (_mode != null)
         {
-            _mode.Text = _restricted || _english ? "ABC" : "日英";
-            _mode.ContentDescription = _english ? "日英自動判別に戻る" : "英語専用モードに切り替える";
+            var pending = !_restricted && !_english && !string.IsNullOrEmpty(_shownView?.Text);
+            _mode.Text = pending ? (_shownKatakana ? "かな" : "カナ") : _restricted || _english ? "英語" : "自動";
+            _mode.ContentDescription = pending ? (_shownKatakana ? "未確定文字をひらがなにする" : "未確定文字をカタカナにする") : _english ? "日英自動判別に戻る" : "英語専用モードに切り替える";
             _mode.Enabled = _ready && !_restricted;
         }
         foreach (var (key, letter) in _letters) key.Text = (_shiftState.Active ? char.ToUpperInvariant(letter) : letter).ToString();
-        if (_shift != null) _shift.SetTypeface(null, _shiftState.Active ? TypefaceStyle.Bold : TypefaceStyle.Normal);
+        if (_shift != null) { _shift.Text = _shiftState.Locked ? "⇪" : "⇧";
+            _shift.ContentDescription = _shiftState.Locked ? "大文字固定を解除" : "Shift、2回押すと大文字固定";
+            _shift.SetTypeface(null, _shiftState.Active ? TypefaceStyle.Bold : TypefaceStyle.Normal); }
     }
     public override void OnDestroy()
     {

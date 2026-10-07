@@ -73,9 +73,11 @@ assert adb("shell", "settings", "get", "secure", "default_input_method") == meth
 editor_id = package + ":id/test_editor"
 tap(find("resource-id", editor_id))
 find("content-desc", "英語専用モードに切り替える")
-tap(find("content-desc", "大文字・小文字を切り替える"))
+tap(find("content-desc", "Shift、2回押すと大文字固定"))
 assert find("content-desc", "q").get("text") == "Q", "Shift does not update letter labels"
-tap(find("content-desc", "大文字・小文字を切り替える"))
+tap(find("content-desc", "Shift、2回押すと大文字固定"))
+assert find("content-desc", "q").get("text") == "Q", "Double Shift did not lock capitals"
+tap(find("content-desc", "大文字固定を解除"))
 assert find("content-desc", "q").get("text") == "q"
 keys = {node.get("content-desc"): node for node in tree().iter("node") if node.get("class") == "android.widget.Button"}
 find("content-desc", "キーボードを閉じる")
@@ -99,8 +101,8 @@ tap(find("content-desc", "候補 0"))
 tap(find("content-desc", "英語専用モードに切り替える"))
 mode = find("content-desc", "日英自動判別に戻る")
 assert find("content-desc", "句読点、文末はピリオド、長押しでピリオド").get("text") == ",", "English punctuation label is not comma"
-assert mode.get("text") == "ABC"
-tap(find("content-desc", "大文字・小文字を切り替える"))
+assert mode.get("text") == "英語"
+tap(find("content-desc", "Shift、2回押すと大文字固定"))
 tap(find("content-desc", "a"))
 assert find("content-desc", "b").get("text") == "b", "Shift remained active after one character"
 tap(find("content-desc", "b"))
@@ -110,7 +112,7 @@ for letter in "abc":
 assert find("resource-id", editor_id).get("text", "").endswith("abc"), "English mode is not direct input"
 capture("android-english.png")
 tap(mode)
-assert find("content-desc", "英語専用モードに切り替える").get("text") == "日英"
+assert find("content-desc", "英語専用モードに切り替える").get("text") == "自動"
 
 # Start with an empty editor, then verify the unconfirmed suffix separately
 # from the editor text (which also contains the confirmed prefix).

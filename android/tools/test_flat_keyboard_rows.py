@@ -15,7 +15,7 @@ keys = {n.get('content-desc'): list(map(int, re.findall(r'\d+', n.get('bounds'))
         for n in tree.iter('node') if n.get('package') == 'jp.aonesenbongi.meltype.learning'
         and n.get('class') == 'android.widget.Button' and n.get('content-desc')}
 for row in [list('qwertyuiop'), list('asdfghjkl-'),
-            ['大文字・小文字を切り替える', *list('zxcvbnm'), '削除、長押しで連続削除'],
+            ['Shift、2回押すと大文字固定', *list('zxcvbnm'), '削除、長押しで連続削除'],
             ['数字・記号と英字配列を切り替える', '英語専用モードに切り替える',
              '句読点、文末はピリオド、長押しでピリオド', '空白・変換', '左へ移動', '右へ移動', '確定・改行']]:
     missing = [key for key in row if key not in keys]

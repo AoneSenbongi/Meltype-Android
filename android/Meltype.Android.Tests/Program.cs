@@ -46,6 +46,35 @@ shift.Toggle(); shift.Reset();
 if (shift.Active || shift.Apply('a') != 'a') throw new Exception("Other key did not release Shift.");
 Console.WriteLine("PASS: punctuation prediction follows output; Shift releases after one character or other action");
 
+shift.Toggle(); shift.Toggle();
+if (!shift.Locked || shift.Apply('a') != 'A' || shift.Apply('b') != 'B') throw new Exception("Double Shift did not lock capitals.");
+shift.Consume();
+if (!shift.Locked) throw new Exception("Other action cleared Caps Lock.");
+shift.Toggle();
+if (shift.Active || shift.Locked) throw new Exception("Shift did not unlock capitals.");
+var modeOps = new List<(int Op, string Text)>();
+var modes = new AndroidInputSession(new FakeConverter(), _ => [], (op, text, _) => modeOps.Add((op,text)));
+foreach (var c in "nihongo") modes.Character(c);
+modes.Character(' '); modeOps.Clear(); modes.ToggleKana();
+if (modes.View?.Text != "ニホンゴ" || !modes.Katakana || modeOps.Any(o => o.Op == 1)) throw new Exception("Kana toggle committed or lost text.");
+modes.ToggleKana();
+if (modes.View?.Text != "にほんご" || modes.Katakana) throw new Exception("Hiragana toggle failed.");
+modeOps.Clear(); modes.InsertBracketPair("()");
+if (!modeOps.Any(o => o.Op == 1 && o.Text == "にほんご") || modeOps.Last() != (7,"()") || modes.View != null) throw new Exception("Bracket insertion did not preserve composition and move inside.");
+modes.SetEnglish(true); modeOps.Clear(); modes.InsertBracketPair("()");
+if (modeOps.Last() != (7,"()")) throw new Exception("English bracket insertion failed.");
+foreach (var pair in new[] { "()", "「」", "{}", "[]", "【】", "『』" })
+{
+    modes.SetEnglish(false); modes.Reset(); modeOps.Clear();
+    foreach (var c in "nihongo") modes.Character(c);
+    modes.InsertBracketPair(pair);
+    if (!modeOps.Any(o => o.Op == 1 && o.Text == "日本語") || modeOps.Last() != (7,pair) || modes.View != null)
+        throw new Exception("Bracket pair did not preserve pending composition: " + pair);
+    modes.SetEnglish(true); modeOps.Clear(); modes.InsertBracketPair(pair);
+    if (modeOps.Last() != (7,pair)) throw new Exception("English bracket pair failed: " + pair);
+}
+Console.WriteLine("PASS: Caps Lock, kana toggle without confirmation, all six bracket pairs after composition");
+
 var converter = new FakeConverter();
 var document = "";
 var preedit = "";

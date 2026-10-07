@@ -45,7 +45,7 @@ public sealed class MainActivity : Activity
         title.AddView(Label("Meltype", 28, MobileStyle.Ink));
         title.AddView(Label("ローマ字で、日英をそのまま。", 13, MobileStyle.Muted));
         header.AddView(title); layout.AddView(header);
-        var intro = Label("日本語はライブ変換。英語は英字のまま。\n日英ボタンで英語専用モードにも切り替えられます。", 14, MobileStyle.Muted);
+        var intro = Label("日本語はライブ変換。英語は英字のまま。\n「自動／英語」ボタンで入力モードを切り替えられます。", 14, MobileStyle.Muted);
         intro.SetPadding(0, Dp(16), 0, Dp(20)); layout.AddView(intro);
         _setupStatus = Label("設定を確認しています…", 14, MobileStyle.Accent);
         _setupStatus.SetPadding(Dp(16), Dp(14), Dp(16), Dp(14));
@@ -143,7 +143,7 @@ public sealed class MainActivity : Activity
         editor.Background = MobileStyle.Rounded(this, Color.White);
         editor.SetPadding(Dp(16), Dp(16), Dp(16), Dp(16));
         layout.AddView(editor, new LinearLayout.LayoutParams(-1, Dp(120)));
-        var tip = Label("Spaceで変換 · Enterで確定\n日英 → 自動判別 ／ ABC → 英語専用", 12, MobileStyle.Muted);
+        var tip = Label("Spaceで変換 · Enterで確定\n自動 → 日英自動判別 ／ 英語 → 英語専用\n入力中のカナ／かな → カタカナ／ひらがな", 12, MobileStyle.Muted);
         tip.SetPadding(0, Dp(10), 0, Dp(6)); layout.AddView(tip);
         Add("ライセンス", () =>
         {

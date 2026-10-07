@@ -17,6 +17,18 @@ public sealed class AndroidInputSession : ICompositionHost
     private static readonly string[] SentenceEndings =
         ["です", "ます", "でした", "ました", "ません", "ない", "なかった", "だった", "である", "だ", "と思う", "と思います"];
     public CompositionView? View { get; private set; }
+    public bool Katakana { get; private set; }
+    public void ToggleKana()
+    {
+        if (_english || string.IsNullOrEmpty(View?.Text)) return;
+        Katakana = !Katakana;
+        Key(Katakana ? 0x76 : 0x75);
+    }
+    public void InsertBracketPair(string pair)
+    {
+        _controller.CommitPending();
+        _output(7, pair, null);
+    }
 
     public AndroidInputSession(IKanjiConverter converter, Func<string, IReadOnlyList<string>> candidates,
         Action<int, string, CompositionView?> output, Func<InputPreferences>? preferences = null, bool learningAllowed = true,
@@ -86,14 +98,14 @@ public sealed class AndroidInputSession : ICompositionHost
         _controller.CommitSelectedPrefix();
     }
     public void Commit() => _controller.CommitPending();
-    public void Reset() { _controller.Reset(); _controller.ResetContext(); _gate.Abort(); View = null; }
+    public void Reset() { _controller.Reset(); _controller.ResetContext(); _gate.Abort(); Katakana = false; View = null; }
     public void CommitText(string text) => _output(1, text, null);
     public void Show(CompositionView view)
     {
         View = view.Converting ? view : _controller.LiveCandidateView(view);
         _output(0, View.Text, View);
     }
-    public void Hide() { View = null; _output(2, "", null); }
+    public void Hide() { Katakana = false; View = null; _output(2, "", null); }
     public void DeleteBackward(int count) => _output(3, count.ToString(), null);
     public void Replay(KeyEvent e)
     {
