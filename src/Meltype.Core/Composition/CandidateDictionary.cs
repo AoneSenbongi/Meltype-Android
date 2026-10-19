@@ -13,7 +13,10 @@ public sealed class CandidateDictionary
 {
     private readonly Dictionary<string, List<string>> _entries = new(StringComparer.Ordinal);
 
-    public int Count => _entries.Count;
+    // 絵文字・顔文字 (emoji.txt・emoji-cldr.txt)。変換の候補では最後にまとめて出すので、ほかの候補と分けて持つ。
+    private readonly Dictionary<string, List<string>> _emoji = new(StringComparer.Ordinal);
+
+    public int Count => _entries.Count + _emoji.Keys.Count(k => !_entries.ContainsKey(k));
 
     public static CandidateDictionary Load(string? userDirectory)
     {
@@ -52,11 +55,8 @@ public sealed class CandidateDictionary
 
     public void AddText(string text)
     {
-        foreach (var rawLine in text.Split('\n'))
+        foreach (var line in Detection.DictionarySource.LinesWithoutComments(text))
         {
-            var line = rawLine;
-            var hash = line.IndexOf('#');
-            if (hash >= 0) line = line[..hash];
             var parts = line.Split([' ', '\t', '\r', '　'], StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2) continue;
             Add(parts[0], parts.Skip(1));
@@ -74,16 +74,18 @@ public sealed class CandidateDictionary
             if (line.TrimStart().StartsWith('#')) continue;
             var parts = line.Split('\t', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
             if (parts.Length < 2) continue;
-            Add(parts[0], parts.Skip(1));
+            Add(_emoji, parts[0], parts.Skip(1));
         }
     }
 
-    /// <summary>読みそのものが辞書にあるか (先頭一致ではなく)。</summary>
-    public bool Contains(string reading) => _entries.ContainsKey(reading);
+    /// <summary>読みそのものが辞書 (絵文字を含む) にあるか (先頭一致ではなく)。</summary>
+    public bool Contains(string reading) => _entries.ContainsKey(reading) || _emoji.ContainsKey(reading);
 
-    public void Add(string reading, IEnumerable<string> words)
+    public void Add(string reading, IEnumerable<string> words) => Add(_entries, reading, words);
+
+    private static void Add(Dictionary<string, List<string>> entries, string reading, IEnumerable<string> words)
     {
-        if (!_entries.TryGetValue(reading, out var list)) _entries[reading] = list = [];
+        if (!entries.TryGetValue(reading, out var list)) entries[reading] = list = [];
         foreach (var word in words)
         {
             if (!list.Contains(word)) list.Add(word);
@@ -98,7 +100,17 @@ public sealed class CandidateDictionary
     private static readonly HashSet<string> Endings =
         ["", "を", "が", "は", "に", "で", "と", "も", "へ", "の", "や", "な", "だ", "です", "から", "まで", "より", "って", "とか", "さ", "ね", "よ"];
 
-    public IReadOnlyList<string> Lookup(string reading)
+    /// <summary>候補 (同音異義語などの後ろに絵文字・顔文字)。</summary>
+    public IReadOnlyList<string> Lookup(string reading) =>
+        LookupWords(reading).Concat(LookupEmoji(reading)).Distinct().ToList();
+
+    /// <summary>絵文字・顔文字以外の候補 (同音異義語・英字で書く語・社名)。</summary>
+    public IReadOnlyList<string> LookupWords(string reading) => Lookup(_entries, reading);
+
+    /// <summary>絵文字・顔文字の候補 (手で書いた emoji.txt の順 → CLDR の順)。</summary>
+    public IReadOnlyList<string> LookupEmoji(string reading) => Lookup(_emoji, reading);
+
+    private static IReadOnlyList<string> Lookup(Dictionary<string, List<string>> entries, string reading)
     {
         for (var length = reading.Length; length >= 1; length--)
         {
@@ -106,7 +118,7 @@ public sealed class CandidateDictionary
             if (length == 1 && reading.Length > 1) break;
             // 残りが助詞など (はし|を) のときだけ。語の途中 (ふく|ざつな → 服ざつな) では使わない。
             if (!Endings.Contains(reading[length..])) continue;
-            if (_entries.TryGetValue(reading[..length], out var words))
+            if (entries.TryGetValue(reading[..length], out var words))
             {
                 var rest = reading[length..];
                 return words.Select(w => w + rest).ToList();

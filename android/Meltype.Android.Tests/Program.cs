@@ -10,6 +10,21 @@ if (args is ["--import-dictionary", var source, var target])
     return;
 }
 
+if (args is ["--audit-personal-typos", var model, var analysis, var report])
+{
+    PersonalRomajiTests.Audit(model, analysis, report);
+    return;
+}
+
+Feature130Tests.Run();
+AdaptiveInputTests.Run();
+PersonalRomajiTests.Run();
+ConversionSelectionTests.Run();
+ConversionSelectionTests.ResizeTests();
+ConversionSelectionTests.SpaceTests();
+ConversionSelectionTests.CandidateTests();
+NumericKeyboardTests.Run();
+EditorCompositionTests.Run();
 KeyboardInteractionTests.Run();
 TypoTrainingTests.Run();
 InputSettingTests.Run();
@@ -75,9 +90,26 @@ foreach (var c in "nihongo") modes.Character(c);
 modes.Character(' '); modeOps.Clear(); modes.ToggleKana();
 if (modes.View?.Text != "ニホンゴ" || !modes.Katakana || modeOps.Any(o => o.Op == 1)) throw new Exception("Kana toggle committed or lost text.");
 modes.ToggleKana();
-if (modes.View?.Text != "にほんご" || modes.Katakana) throw new Exception("Hiragana toggle failed.");
+if (modes.View?.Text != "日本語" || modes.Katakana) throw new Exception("Automatic conversion was not restored after katakana.");
+foreach (var raw in new[] { "nihongo", "open", "kyouhagoogledekensaku" })
+{
+    var commits = new List<string>();
+    var automatic = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+    var toggled = new AndroidInputSession(new FakeConverter(), _ => [], (op, text, _) => { if (op == 1) commits.Add(text); });
+    foreach (var c in raw) { automatic.Character(c); toggled.Character(c); }
+    toggled.ToggleKana(); toggled.ToggleKana();
+    if (toggled.Katakana || toggled.View?.Text != automatic.View?.Text || commits.Count > 0)
+        throw new Exception("Katakana return changed automatic preview or committed: " + raw);
+    automatic.Character('a'); toggled.Character('a');
+    if (toggled.View?.Text != automatic.View?.Text)
+        throw new Exception("Input remained forced kana after automatic return: " + raw);
+    var visible = toggled.View!.Text;
+    toggled.Commit();
+    if (string.Concat(commits) != visible) throw new Exception("Automatic return changed confirmation: " + raw);
+}
+Console.WriteLine("PASS: katakana returns to automatic Japanese/English/mixed preview, subsequent input and confirmation without early commit");
 modeOps.Clear(); ChoosePair(modes, "()");
-if (!modeOps.Any(o => o.Op == 1 && o.Text == "にほんご") || modeOps.Last() != (7,"()") || modes.View != null) throw new Exception("Bracket insertion did not preserve composition and move inside.");
+if (!modeOps.Any(o => o.Op == 1 && o.Text == "日本語") || modeOps.Last() != (7,"()") || modes.View != null) throw new Exception("Bracket insertion did not preserve composition and move inside.");
 modes.SetEnglish(true); modeOps.Clear(); ChoosePair(modes, "()");
 if (modeOps.Last() != (7,"()")) throw new Exception("English bracket insertion failed.");
 foreach (var pair in new[] { "()", "「」", "{}", "[]", "【】", "『』" })
@@ -170,6 +202,23 @@ Equal("我々は", partialDocument); Equal("", partialPreedit);
 partial.Character('「'); partial.Character('」');
 Equal("我々は「」", partialDocument);
 Console.WriteLine("PASS: candidate tap and Enter confirm only the selected prefix; later clause remains editable");
+
+foreach (var converting in new[] { false, true })
+{
+    partial.Reset(); partialDocument = "";
+    foreach (var c in "warewarehautyuujinda") partial.Character(c);
+    if (converting) { partial.Space(false); partial.Key(0x27); partial.Space(false); }
+    var suffix = converting ? "宇宙人だよ" : "宇宙人だ";
+    partial.SelectPosition(1);
+    Equal("", partialDocument);
+    if (partial.View?.SelectedClause != 0) throw new Exception("Editor selection did not select earlier clause");
+    partial.Select(partial.View.Candidates.ToList().IndexOf("われわれは"));
+    Equal("われわれは", partialDocument); Equal(suffix, partialPreedit);
+    if (partial.View is not { Converting: true }) throw new Exception("Earlier edit confirmed later clause");
+    partial.Select(partial.View.Candidates.ToList().IndexOf("宇宙人だよ"));
+    Equal("われわれは宇宙人だよ", partialDocument);
+}
+Console.WriteLine("PASS: editor selection of earlier live/converting clause preserves later candidates and chosen text");
 
 partial.Reset(); partialDocument = "";
 foreach (var c in "warewarehautyuujinda") partial.Character(c);

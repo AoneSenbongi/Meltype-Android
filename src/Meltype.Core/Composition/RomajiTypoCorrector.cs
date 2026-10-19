@@ -24,10 +24,8 @@ public sealed class RomajiTypoCorrector
     {
         _romaji = romaji;
         foreach (var word in FunctionWords) Add(word);
-        foreach (var rawLine in readings.Split('\n'))
+        foreach (var line in Detection.DictionarySource.DataLines(readings))
         {
-            var line = rawLine.TrimEnd('\r');
-            if (line.Length == 0 || line[0] == '#') continue;
             var parts = line.Split('\t');
             Add(parts[0]);
             if (parts.Length > 1) AddConjugations(parts[0], parts[1]);
@@ -40,6 +38,20 @@ public sealed class RomajiTypoCorrector
 
     /// <summary>読みがよく使う語 (または付属語・活用した形) か。</summary>
     public bool IsWord(string hiragana) => _words.Contains(hiragana);
+
+    /// <summary>知らない文字を補わず、既知の読みだけで最後まで区切れるか。</summary>
+    public bool IsKnownReading(string kana)
+    {
+        var known = new bool[kana.Length + 1]; known[0] = true;
+        for (var end = 1; end <= kana.Length; end++)
+            for (var length = 1; length <= Math.Min(end, _maxLength); length++)
+            {
+                var piece = kana.Substring(end - length, length);
+                if (known[end - length] && _words.Contains(piece) && (length >= 2 || Function.Contains(piece)))
+                { known[end] = true; break; }
+            }
+        return known[^1];
+    }
 
     // 助詞・助動詞・よく付く語。1 文字でも語として数える。
     private static readonly string[] FunctionWords =

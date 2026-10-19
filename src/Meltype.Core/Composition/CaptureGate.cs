@@ -17,6 +17,7 @@ public readonly record struct CapturedInput(KeyEvent? Key, MouseButtonEvent? Mou
 /// こうすることで、確定前の文字を後続の打鍵やクリックが追い越すことがない。
 ///
 /// フックのスレッドから呼ばれるので、ロック内ではキューへの出し入れしかしない。
+/// OnKey と OnMouseButton は 1 つのスレッド (フックのスレッド) から呼ぶ。
 /// </summary>
 public sealed class CaptureGate
 {
@@ -33,14 +34,23 @@ public sealed class CaptureGate
     /// <summary>true ならフックでその打鍵を握りつぶす。</summary>
     public bool OnKey(KeyEvent e, Func<KeyEvent, bool> startsComposition)
     {
+        bool captured;
         lock (_gate)
         {
-            if (!_captured)
+            captured = _captured;
+            if (captured) _queue.Enqueue(new CapturedInput(e, null));
+        }
+        if (!captured)
+        {
+            // 打ち始めの判定はフォーカスを調べ終わるのを待つことがあるので、ロックの外で行う。
+            // 関所を閉める (_captured を true にする) のも、キューに積むのもフックのスレッドだけで、関所が開いている間はキューは空。
+            // 判定の間に UI スレッドがしうるのは、開いた関所を開いたままにすること (TryRelease・Abort) だけなので、判定の後に閉めても順番は崩れない。
+            if (!startsComposition(e)) return false;
+            lock (_gate)
             {
-                if (!startsComposition(e)) return false;
                 _captured = true;
+                _queue.Enqueue(new CapturedInput(e, null));
             }
-            _queue.Enqueue(new CapturedInput(e, null));
         }
         _signal();
         return true;

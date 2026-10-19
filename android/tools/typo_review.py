@@ -115,11 +115,11 @@ button{cursor:pointer}button[aria-pressed=true]{background:#2c6778;color:white}b
 .muted{color:#536872;font-size:14px}h1{font-size:24px}#status{min-height:24px}
 @media(max-width:600px){.pair{grid-template-columns:1fr}.arrow{display:none}}
 </style><h1>Meltype 編集履歴の確認</h1>
-<p>削除前と打ち直し後を比較して判定してください。言い換えなどは「誤字ではない」を選びます。句読点は「適切」「不適切」で判定します。</p>
+<p>削除前と打ち直し後を比較して判定してください。言い換えなどは「誤字ではない」を選びます。</p>
 <p class="muted">確認用アプリを起動している間、USB接続を15秒ごとに確認します。未確認の記録は自動修正に使いません。</p>
 <button id="pull">USBから取得</button><button id="export">「誤字」を書き出す</button><p id="status"></p>
 <input id="search" placeholder="文字で検索" aria-label="文字で検索"><select id="filter" aria-label="判定で絞り込み">
-<option value="pending">未確認</option><option value="all">すべて</option><option value="typo">誤字／不適切</option><option value="not_typo">誤字ではない／適切</option></select>
+<option value="pending">未確認</option><option value="all">すべて</option><option value="typo">誤字</option><option value="not_typo">誤字ではない</option></select>
 <span id="counts" class="muted"></span><div id="list"></div>
 <script>
 const token=__TOKEN__;let rows=[];
@@ -130,8 +130,8 @@ function render(){const list=document.getElementById('list');list.replaceChildre
 document.getElementById('counts').textContent=`${rows.length}組 · 未確認 ${rows.filter(r=>r.label==='pending').length}組`;
 const shown=rows.filter(r=>(f==='all'||r.label===f)&&(!q||r.before.includes(q)||r.after.includes(q)));
 if(!shown.length)list.append(node('p','表示する記録はありません。'));
-for(const r of shown){const box=node('div',undefined,'record');box.append(node('p',`${r.kind==='punctuation'?'句読点':'編集'} · ${r.count}回 · 最終 ${r.day}`,'muted'));const pair=node('div',undefined,'pair');pair.append(diff(r.before,r.after),node('span','→','arrow'),diff(r.after,r.before));box.append(pair);
-for(const [value,title]of [['typo','誤字'],['not_typo','誤字ではない'],['pending','保留']]){const b=node('button',r.kind==='punctuation'?(value==='typo'?'不適切':value==='not_typo'?'適切':title):title);b.setAttribute('aria-pressed',String(r.label===value));b.onclick=async()=>{b.disabled=true;try{await api('label',{pair:r.pair,label:value});r.label=value;render()}catch(e){status(e.message);b.disabled=false}};box.append(b)}list.append(box)}}
+for(const r of shown){const box=node('div',undefined,'record');box.append(node('p',`編集 · ${r.count}回 · 最終 ${r.day}`,'muted'));const pair=node('div',undefined,'pair');pair.append(diff(r.before,r.after),node('span','→','arrow'),diff(r.after,r.before));box.append(pair);
+for(const [value,title]of [['typo','誤字'],['not_typo','誤字ではない'],['pending','保留']]){const b=node('button',title);b.setAttribute('aria-pressed',String(r.label===value));b.onclick=async()=>{b.disabled=true;try{await api('label',{pair:r.pair,label:value});r.label=value;render()}catch(e){status(e.message);b.disabled=false}};box.append(b)}list.append(box)}}
 function status(s){document.getElementById('status').textContent=s}
 async function refresh(){try{const d=await api('rows');rows=d.rows;status(d.status);render()}catch(e){status(e.message)}}
 document.getElementById('search').oninput=render;document.getElementById('filter').onchange=render;
@@ -199,7 +199,7 @@ class ReviewApp:
                 if self.path == "/":
                     self.send(PAGE.replace("__TOKEN__", json.dumps(app.token)), kind="text/html")
                 elif self.path == "/api/rows":
-                    self.send({"rows": app.store.rows(), "status": app.status})
+                    self.send({"rows": [r for r in app.store.rows() if r["kind"] == "edit"], "status": app.status})
                 else:
                     self.send({"error": "ページが見つかりません。"}, 404)
 
@@ -230,11 +230,12 @@ def main():
     parser.add_argument("--data", type=pathlib.Path, default=BASE / "training-data")
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--port", type=int, default=0)
     args = parser.parse_args()
     app = ReviewApp(ReviewStore(args.data), args.adb)
     if args.once:
         print(app.pull()); return
-    server = ThreadingHTTPServer(("127.0.0.1", 0), app.handler())
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), app.handler())
     server.daemon_threads = True
     threading.Thread(target=app.watch, daemon=True).start()
     url = f"http://127.0.0.1:{server.server_port}/"

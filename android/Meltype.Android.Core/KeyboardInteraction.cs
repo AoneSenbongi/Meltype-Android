@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 namespace Meltype.AndroidCore;
-public sealed class SymbolPress(Action tap, Action hold)
+public sealed class KeyPressOrder
+{
+    private SymbolPress? _pending;
+    public void BeforePress() { var pending = _pending; _pending = null; pending?.Up(); }
+    internal void Track(SymbolPress press) => _pending = press;
+    internal void Release(SymbolPress press) { if (ReferenceEquals(_pending, press)) _pending = null; }
+}
+public static class KeyTouchBounds
+{
+    public static bool Contains(float x, float y, int width, int height, int slop) =>
+        x >= -slop && x < width + slop && y >= -slop && y < height + slop;
+}
+public sealed class SymbolPress(Action tap, Action hold, KeyPressOrder? order = null)
 {
     private bool _down, _fired;
-    public void Down() { _down = true; _fired = false; }
+    public void Down() { order?.BeforePress(); _down = true; _fired = false; order?.Track(this); }
     public void Hold() { if (_down && !_fired) { _fired = true; hold(); } }
     public void Up() { var fire = _down && !_fired; Cancel(); if (fire) tap(); }
-    public void Cancel() { _down = false; _fired = false; }
+    public void Cancel() { _down = false; _fired = false; order?.Release(this); }
 }
 public static class CursorMovement
 {
@@ -23,9 +35,9 @@ public static class KeyboardSymbols
     public static string? For(char c) => c switch
     {
         >= 'a' and <= 'z' when "qwertyuiop".Contains(c) => "1234567890"["qwertyuiop".IndexOf(c)].ToString(),
-        >= 'a' and <= 'z' when "asdfghjkl".Contains(c) => "@#¥%&-+()"["asdfghjkl".IndexOf(c)].ToString(),
-        >= 'a' and <= 'z' when "zxcvbnm".Contains(c) => new[]{";","\"","「」","/",":","!","?"}["zxcvbnm".IndexOf(c)],
-        '-' => "_", _ => null
+        >= 'a' and <= 'z' when "asdfghjkl".Contains(c) => new[]{"@","#","¥","%","&","-","+","()","/"}["asdfghjkl".IndexOf(c)],
+        >= 'a' and <= 'z' when "zxcvbnm".Contains(c) => new[]{"_","'",":",";","\"","!","?"}["zxcvbnm".IndexOf(c)],
+        '-' => "「」", _ => null
     };
 }
 public sealed class ClipboardHistory(Func<DateTimeOffset>? clock = null)
@@ -40,4 +52,27 @@ public sealed class ClipboardHistory(Func<DateTimeOffset>? clock = null)
         if(_items.Count>10) _items.RemoveRange(10,_items.Count-10);
     }
     public void Clear() => _items.Clear();
+}
+
+public sealed class ClipboardSuggestion(long lastTimestamp = 0)
+{
+    public long LastTimestamp { get; private set; } = lastTimestamp;
+    public string? Text { get; private set; }
+    public void Open(long timestamp, string? text)
+    {
+        Text = timestamp > 0 && timestamp != LastTimestamp ? text : null;
+        LastTimestamp = timestamp;
+    }
+    public void Dismiss() => Text = null;
+}
+
+public static class ClipboardInputPolicy
+{
+    public static bool Allows(int inputType) => (inputType & 15) switch
+    {
+        1 => (inputType & 0xff0) is not (0x80 or 0x90 or 0xe0),
+        2 => (inputType & 0xff0) != 0x10,
+        3 or 4 => true,
+        _ => false
+    };
 }

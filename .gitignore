@@ -39,3 +39,6 @@ training-data/
 *.sqlite3
 *.sqlite3-*
 **/__pycache__/
+
+# Local verification helpers and extracted Python dependencies
+work/

@@ -19,12 +19,12 @@ sumitomo mizuho nomura daikin shimano asics mazinger gundam naruto dragonball do
 github gitlab bitbucket git svn typescript javascript java python node nodejs npm npx yarn pnpm deno bun
 react vue angular svelte next nuxt vite webpack rollup esbuild babel eslint prettier jest mocha vitest
 docker podman kubernetes kubectl helm terraform ansible aws azure gcp linux ubuntu debian fedora centos
-windows macos ios android bash zsh fish powershell pwsh cmd terminal console server client localhost
+wsl windows macos ios android bash zsh fish powershell pwsh cmd terminal console server client localhost
 http https www html css scss sass json yaml yml toml xml csv sql mysql postgres postgresql sqlite mongodb
 redis nginx apache kafka rabbitmq elasticsearch commit commits push pull merge rebase branch checkout
-clone fetch stash status diff log init install uninstall update upgrade build run test tests debug deploy
+clone fetch stash sync synced syncing status diff log init install uninstall update upgrade build run test tests debug deploy
 release config configure setup start stop restart reset revert cherry pick tag tags dev prod staging api
-apis rest graphql grpc sdk cli gui ide vscode vim neovim emacs nano code visual studio dotnet csharp cpp
+apis rest graphql grpc sdk cli gui ide vscode vim neovim emacs nano code coding vibe visual studio dotnet csharp cpp
 rust golang kotlin swift ruby rails php laravel django flask fastapi spring boot maven gradle cargo pip
 pipenv poetry conda venv jupyter notebook pandas numpy scipy matplotlib tensorflow pytorch keras openai
 anthropic claude chatgpt gpt llm discord slack teams zoom notion figma jira confluence trello asana
@@ -38,6 +38,8 @@ typedef enum struct public private protected static void int integer string stri
 false null nil undefined none self this new delete object objects array arrays list lists map maps set
 dict tuple float double char byte bytes long short args argv printf println print echo error errors warn
 warning info trace exception exceptions try catch finally throw raise def lambda yield await async
+# infobesity は情報過多。ty が残って いんふぉべしty になっていた (issue #538)
+infobesity
 while for if else elif switch case default goto break continue unset source alias sudo kill ps top
 make makefile cmake meson ninja gcc clang llvm msbuild nuget winget choco scoop brew apt yum dnf pacman
 node_modules dist bin obj lib src tmp temp var etc usr opt home desktop documents downloads
@@ -69,6 +71,7 @@ color colors pixel pixels screen screens display monitor keyboard mouse touch cl
 copy paste cut undo redo save open close exit quit new edit view help about home back next previous
 submit cancel confirm delete remove add create update upload download share send receive reply forward
 select deselect enable disable enabled disabled toggle check uncheck on off yes no ok okay
+ping pong
 
 # --- ローマ字としても読めてしまう一般的な英単語 ---
 a an and are as at be been but by can do does done did go goes going gone get got give given
@@ -93,8 +96,10 @@ close cloth cloud club coach coast coat coffee cold collect college come comes c
 compare complete concern consider contain content context continue control cook cool core corn corner
 cost could count country couple course court cover cow crash crazy cream create credit crew crime crop
 cross crowd crown cry culture cup current curve customer cut cute cycle dad daily damage dame dance
-danger dare dark data date daughter day dead deal dear death debate debt decade decide deep deer defeat
+danger dare dark data date daughter day dead deal dear death debate debt decade decide declutter deep deer defeat
 defend define degree delay demand demo demon denial dense density deny depend deposit depth describe
+danger dare dark data date daughter day dead deal dear death debate debt decade decide deep deer defeat
+defend define defuse degree delay demand demo demon denial dense density deny depend deposit depth describe
 design desk detail detect develop device dew diet differ dig digital dinner direct dirt dirty discover
 dish dog doing dollar domestic dominant donate donkey donor door dose double doubt down dozen draft
 drama draw dream dress drink drive drop drum dry duck due during dust duty each eager early earn earth
@@ -190,7 +195,7 @@ beta cafe cage cane cape coma cone cube cure dine dire dome dope dude duke ego f
 lane logo meta mute nude nuke pane pine poke polo pope rage rake ripe rode rune sage sane soda solo tore
 wade wipe woke wore anime demo dojo emoji kimono karate tsunami typhoon tycoon
 # 技術用語 (日本語の文の中でもそのまま英字で書くことが多い)
-api apis url urls uri json yaml csv pdf png jpg jpeg gif svg html css xml sql ssh ssl tls dns ip tcp udp http https
+api apis url urls uri json yaml csv pdf png jpg jpeg gif svg html css xml sql ssh ssl tls dns ip tcp udp http https oem
 cpu gpu ram rom ssd hdd usb hdmi wifi bluetooth nfc os ui ux io ai ml llm gpt rag mcp sdk ide cli gui repo repos
 bug bugs issue issues pull push merge commit commits branch branches deploy build release tag tags diff patch
 token tokens prompt prompts model models agent agents tool tools server servers client clients browser
@@ -213,3 +218,39 @@ riverside seaside teenage teenager woah mod mods hardcore tacz nsfw sfw fbc mine
 online
 # --- 英単語 + する (pushして) の site と同じ綴りで終わる語 (web + site で分けない) ---
 website websites campsite worksite onsite offsite
+# Issue #616
+whois
+# Issue #683
+guesstimation
+# Issue #686
+enshittification
+# Issue #689
+finfluencer
+# Issue #692
+greedflation
+# Issue #725
+openstreetmap
+# Issue #726
+malvertising
+# Issue #730
+adtech
+# Issue #731
+robonomics
+# Issue #733
+netizenry
+# Issue #735
+tver
+# Issue #249
+mozc
+
+# Issue #822
+autoclicker
+clicker
+# Issue #826
+ext
+
+# Issue #835
+docs
+
+# Issue #887
+exe

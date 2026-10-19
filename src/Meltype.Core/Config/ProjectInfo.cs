@@ -24,13 +24,17 @@ public static class ProjectInfo
     /// <summary>公開した版 (1.0.0 以降) か。それまではリポジトリが非公開なので、GitHub で報告する道は出さない。</summary>
     public static bool IsPublicRelease(string version) => Version.TryParse(version, out var parsed) && parsed.Major >= 1;
 
+    /// <summary>不具合報告のフォーム (ReportForm) があるか。無ければ GitHub の Issue の画面で報告してもらう。</summary>
+    public static bool HasReportForm => ReportForm.Length > 0;
+
     /// <summary>
     /// 不具合報告を開く URL。os はフォームの OS の選択肢 (Windows 11 / Mac (プレビュー版) / Linux (プレビュー版))。
-    /// フォームがまだ無ければ GitHub の Issue の画面 (公開前はリポジトリが非公開なので、協力者だけが開ける)。
+    /// フォームがまだ無ければ GitHub の「不具合の報告」のひな形 (1-bug.yml) を、OS・版・実行環境を入れた状態で開く。
+    /// ひな形を選ぶ画面 (issues/new/choose) を開くと、選んだあとの画面に URL の値が引き継がれず空欄になる (issue #877)。
     /// </summary>
     public static string ReportUrl(string os, string version, string environment)
     {
-        if (ReportForm.Length == 0) return $"{SourceUrl}/issues/new/choose";
+        if (!HasReportForm) return GitHubReportUrl("1-bug.yml", os, version, environment);
         return ReportForm
             .Replace("=Windows+11", "=" + Uri.EscapeDataString(os))
             .Replace("=0.0.0", "=" + Uri.EscapeDataString(version))
@@ -44,6 +48,20 @@ public static class ProjectInfo
     public static string GitHubReportUrl(string template, string os, string version, string environment) =>
         $"{SourceUrl}/issues/new?template={Uri.EscapeDataString(template)}&os={Uri.EscapeDataString(os)}" +
         $"&version={Uri.EscapeDataString(version)}&environment={Uri.EscapeDataString(environment)}";
+
+    /// <summary>
+    /// 自分で直した誤判定を、「変換・判定の間違い」のひな形 (2-misdetection.yml) に入れた状態で開く URL (issue #284)。
+    /// 欄の id (kind・typed・actual・expected・key・context) は、ひな形と合わせる。
+    /// </summary>
+    public static string MisdetectionReportUrl(Composition.Correction correction, string os, string version, string environment) =>
+        GitHubReportUrl("2-misdetection.yml", os, version, environment) +
+        $"&title={Uri.EscapeDataString("[誤判定] " + correction.Typed)}" +
+        $"&kind={Uri.EscapeDataString(correction.Kind)}" +
+        $"&typed={Uri.EscapeDataString(correction.Typed)}" +
+        $"&actual={Uri.EscapeDataString(correction.Shown)}" +
+        $"&expected={Uri.EscapeDataString(correction.Corrected)}" +
+        $"&key={Uri.EscapeDataString(correction.LastKey)}" +
+        $"&context={Uri.EscapeDataString(correction.Before)}";
 
     /// <summary>Mac 版・Linux 版の実行環境 (不具合報告に入れる。入力した文字は入れない)。</summary>
     public static string Environment(Settings settings, string platform) => string.Join("\n",

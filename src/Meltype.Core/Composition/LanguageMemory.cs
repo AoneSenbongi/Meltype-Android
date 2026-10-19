@@ -16,7 +16,7 @@ public sealed class LanguageMemory
     private readonly string? _path;
     private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
 
-    private sealed class Entry
+    internal sealed class Entry
     {
         public bool English { get; set; }
         public DateTime Used { get; set; }
@@ -28,8 +28,12 @@ public sealed class LanguageMemory
         public bool Explicit { get; set; }
     }
 
-    /// <summary>学習した語 (設定の「学習した語」の一覧に出す)。Active は今効いているか (2 回目を待っている語は false)。</summary>
-    public sealed record Learned(string Word, bool English, int Count, DateTime Used, bool Active);
+    /// <summary>学習した語 (設定の「学習した語」の一覧に出す)。Active は今有効になっているか (2 回目を待っている語は false)。</summary>
+    public sealed record Learned(string Word, bool English, int Count, DateTime Used, bool Active, string? Key = null, string? Context = null)
+    {
+        /// <summary>Remove に渡す名前 (文脈ごとに分けて覚えた語は、印 @e / @j 付き)。</summary>
+        public string EntryKey => Key ?? Word;
+    }
 
     /// <summary>
     /// ローマ字としてよく使う日本語になる語か (kyouha = 今日は、sushi = すし)。こういう語は、一度英字にして確定しただけでは
@@ -51,19 +55,23 @@ public sealed class LanguageMemory
     public LanguageMemory(string? path)
     {
         _path = path;
-        if (path is null || !File.Exists(path)) return;
-        try
+        Config.DataFile.Load(path, "英語 / 日本語の学習データ", content =>
         {
-            var loaded = JsonSerializer.Deserialize<Dictionary<string, Entry>>(File.ReadAllText(path));
+            var loaded = JsonSerializer.Deserialize(content, Config.LearningJsonContext.Default.Languages);
             if (loaded is not null) foreach (var (word, entry) in loaded) _entries[word] = entry;
-        }
-        catch (Exception ex)
-        {
-            Diagnostics.Log.Warn($"英語 / 日本語の学習データを読めませんでした: {ex.Message}");
-        }
+        });
     }
 
     public int Count => _entries.Count;
+
+    /// <summary>学習を前の文脈 (英語の後か日本語の後か) ごとに分けるか (設定「英語 / 日本語の学習を前の文脈ごとに分ける」: issue #491)。</summary>
+    public bool ContextSensitive { get; set; }
+
+    /// <summary>今の入力の前が英語か (true)、日本語か (false)、分からないか (null)。</summary>
+    public bool? Context { get; set; }
+
+    /// <summary>文脈ごとに分けるときの、語の後ろにつける印 (分けないときは空)。</summary>
+    private string ContextSuffix => ContextSensitive && Context is { } english ? (english ? "@e" : "@j") : "";
 
     /// <summary>覚えている内容が変わるたびに増える (判定の結果を使い回してよいかを見るのに使う)。</summary>
     public int Version { get; private set; }
@@ -71,8 +79,18 @@ public sealed class LanguageMemory
     /// <summary>覚えている語なら英語か (true) 日本語か (false)。覚えていなければ null。word は小文字の英字。</summary>
     public bool? Get(string word)
     {
+        if (ContextSuffix is { Length: > 0 } suffix && _entries.TryGetValue(word + suffix, out var contextual))
+            return NeedsTwice(word, contextual) ? null : contextual.English;
         if (!_entries.TryGetValue(word, out var entry)) return null;
         if (NeedsTwice(word, entry)) return null;
+        return entry.English;
+    }
+
+    internal bool? Get(ReadOnlySpan<char> word)
+    {
+        if (ContextSuffix is { Length: > 0 }) return Get(word.ToString());
+        if (!_entries.GetAlternateLookup<ReadOnlySpan<char>>().TryGetValue(word, out var entry)) return null;
+        if (NeedsTwice(word.ToString(), entry)) return null;
         return entry.English;
     }
 
@@ -85,7 +103,8 @@ public sealed class LanguageMemory
         word = word.ToLowerInvariant();
         if (word.Length < 2 || !word.All(char.IsAsciiLetterLower)) return;
         Version++;
-        if (_entries.TryGetValue(word, out var old) && old.English == english)
+        var entryKey = word + ContextSuffix;
+        if (_entries.TryGetValue(entryKey, out var old) && old.English == english)
         {
             old.Used = DateTime.UtcNow;
             var waiting = NeedsTwice(word, old);
@@ -96,7 +115,7 @@ public sealed class LanguageMemory
         else
         {
             var entry = new Entry { English = english, Used = DateTime.UtcNow, Count = 1, Explicit = explicitChoice };
-            _entries[word] = entry;
+            _entries[entryKey] = entry;
             Diagnostics.Log.Decision(NeedsTwice(word, entry)
                 ? $"{Diagnostics.Log.Text(word)}はローマ字としても読めるので、もう一度英字にして確定したら英語にします (学習)。"
                 : $"{Diagnostics.Log.Text(word)}は次から{(english ? "英語" : "日本語")}にします (学習)。");
@@ -114,8 +133,12 @@ public sealed class LanguageMemory
     /// <summary>学習した語の一覧 (新しく使ったものから)。</summary>
     public IReadOnlyList<Learned> Entries() =>
         _entries.OrderByDescending(e => e.Value.Used)
-            .Select(e => new Learned(e.Key, e.Value.English, Math.Max(1, e.Value.Count), e.Value.Used, !NeedsTwice(e.Key, e.Value)))
+            .Select(e => new Learned(WithoutContext(e.Key), e.Value.English, Math.Max(1, e.Value.Count), e.Value.Used, !NeedsTwice(e.Key, e.Value), e.Key,
+                e.Key.EndsWith("@e", StringComparison.Ordinal) ? "英語の後" : e.Key.EndsWith("@j", StringComparison.Ordinal) ? "日本語の後" : null))
             .ToList();
+
+    /// <summary>文脈ごとに分けて覚えた語の印 (@e / @j) を外した、語そのもの。</summary>
+    private static string WithoutContext(string key) => key.EndsWith("@e", StringComparison.Ordinal) || key.EndsWith("@j", StringComparison.Ordinal) ? key[..^2] : key;
 
     /// <summary>学習した語を忘れる (設定の「学習した語」から消したとき)。</summary>
     public void Remove(IEnumerable<string> words)
@@ -134,15 +157,20 @@ public sealed class LanguageMemory
         Save();
     }
 
+    /// <summary>sinceUtc より後に覚えた (直した) 語を忘れる (トレイの「最近の学習を消す」)。忘れた数を返す。</summary>
+    public int ForgetSince(DateTime sinceUtc)
+    {
+        var recent = _entries.Where(e => e.Value.Used >= sinceUtc).Select(e => e.Key).ToList();
+        Remove(recent);
+        return recent.Count;
+    }
+
     private void Save()
     {
         if (_path is null) return;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            var temp = _path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(_entries));
-            File.Move(temp, _path, overwrite: true);
+            Config.DataFile.Write(_path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(_entries, Config.LearningJsonContext.Default.Languages)));
         }
         catch (Exception ex)
         {

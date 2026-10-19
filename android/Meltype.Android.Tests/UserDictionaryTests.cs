@@ -21,7 +21,24 @@ static class UserDictionaryTests
             var shown = "";
             var session = new AndroidInputSession(new Plain(), _ => [], (op,text,_) => { if(op == 0) shown=text; }, userDictionary: store);
             foreach(var c in "tesutoyou") session.Character(c);
-            if (shown != "独自単語よう") throw new Exception("User dictionary is absent from live conversion: " + shown);
+            if (shown != "てすとよう") throw new Exception("Registered prefix overrode engine context: " + shown);
+            session.Reset(); foreach(var c in "tesuto") session.Character(c);
+            if (session.View?.Candidates.Contains("独自単語") != true) throw new Exception("Registered word is absent from candidates");
+            var committed = "";
+            session = new AndroidInputSession(new Plain(), _ => [], (op,text,_) => { if(op == 1) committed += text; }, userDictionary: store);
+            foreach(var c in "tesuto") session.Character(c);
+            session.Select(session.View!.Candidates.ToList().IndexOf("独自単語"));
+            if(committed != "独自単語") throw new Exception("Selected registered word was not committed");
+            store.Add("はし", "橋"); store.Add("かわ", "革"); store.Add("てすとよう", "独自の長い語");
+            session = new AndroidInputSession(new Contextual(), _ => [], (_,_,_) => { }, userDictionary: store);
+            foreach(var c in "hasiru") session.Character(c); session.Space(false);
+            if(session.View?.Text != "走る") throw new Exception("Registered substring split a contextual word: " + session.View?.Text);
+            session.Reset(); foreach(var c in "kawadeoyogu") session.Character(c);
+            if(session.View?.Text != "川で泳ぐ") throw new Exception("Registered word beat sentence context: " + session.View?.Text);
+            session.Reset(); foreach(var c in "kawa") session.Character(c); session.Space(false);
+            if(session.View?.Text != "川" || session.View.Candidates.Contains("革") != true) throw new Exception("Engine result or alternate registered candidate missing");
+            session.Reset(); foreach(var c in "tesutoyou") session.Character(c);
+            if(session.View?.Text != "テスト用" || session.View.Candidates.Contains("独自の長い語") != true) throw new Exception("Exact registered phrase or contextual default missing");
             session.Reset(); foreach(var c in "a") session.Character(c);
             if (session.View?.Candidates.Contains("短い語") != true) throw new Exception("Short reading is absent from candidates");
             if(store.CompositionDictionary.Split("あいう") != null) throw new Exception("Short reading replaced a word prefix");
@@ -41,6 +58,18 @@ static class UserDictionaryTests
             Console.WriteLine("PASS: Simeji/short readings, deduplication, persistence, live conversion, candidates, invalid import");
         }
         finally { if(File.Exists(path)) File.Delete(path); }
+    }
+    sealed class Contextual : IKanjiConverter
+    {
+        public string? Convert(string text)=>string.Concat(ConvertClauses(text)!.Select(c=>c.Text));
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string text,string? context=null)=>text switch
+        {
+            "はしる"=>[new(text,"走る")],
+            "かわでおよぐ"=>[new("かわ","川"),new("でおよぐ","で泳ぐ")],
+            "かわ"=>[new(text,"川")],
+            "てすとよう"=>[new("てすと","テスト"),new("よう","用")],
+            _=>[new(text,text)]
+        };
     }
     sealed class Plain : IKanjiConverter
     {

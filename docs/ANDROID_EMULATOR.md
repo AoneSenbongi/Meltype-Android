@@ -8,4 +8,22 @@ android/tools/Start-AndroidEmulator.cmdをダブルクリックして起動す�
 
 操作試験はMELTYPE_TEST_SERIAL=emulator-5554を設定してandroid/tools/test_input_actions.pyとtest_long_press_clipboard.pyを実行する。設定しない場合、既存の試験は従来どおりUSBの実機を対象にする。
 
+test_number_keyboard.pyは既定でemulator-5554を対象にする。number-fixtureをローカルでビルドして導入し、整数・負数・小数・数値パスワード・電話番号のテンキー、直接入力、削除、次の文字欄への移動と通常配列への復帰を検証する。エミュレーターでは学習用操作盤のスイッチ保存、収集開始の取消・確認、学習停止に伴う収集停止と再開時の状態も確認する。試験用収集は停止し、端末の実データは使用しない。実機で確認する際は利用者の依頼を受け、APKと私有データを退避してから--serialで端末を指定し、--numeric-onlyで収集設定の操作を除外する。画面の証跡はdistribution/panel-number-localへ保存する。
+
 起動と操作の結果はdocs/CURRENT_STATE.mdへ記録する。エミュレーターの結果は、手元のスマホでの点滅や初回表示の解消確認と区別する。
+
+test_conversion_context.pyは--serialで端末を明示する。conversion-fixtureの入力欄は学習禁止指定にし、実機の辞書と収集記録を変えずに英字の確定、混在入力、Shift＋Spaceを確認する。実機更新前はAPKと私有データを退避し、試験後はファイルのハッシュと元のIME選択を確認して試験用アプリを削除する。証跡はdistribution/conversion-context-localへ保存する。今回の検証は実機で行い、エミュレーターは終了した状態を保つ。
+
+## タッチ入力の回帰試験
+
+test_touch_tolerance.pyはキー端の横・縦の小移動、許容幅を超える移動と削除を検証する。test_touch_order.pyは2本の指を模したイベントで、後のキーを先に離す操作、文字と削除の重なり、Shiftと文字の重なりを検証する。test_control_long_press.pyは句読点の長押しと削除の連続入力・離した後の停止を検証する。いずれもMELTYPE_TEST_SERIAL=emulator-5554で実行する。
+
+順序試験の前に、android/tools/TouchInjection.javaをSDKのandroid.jarをクラスパスとしてJDKでコンパイルし、ビルドツールのD8でDEXへ変換する。classes.dexをエミュレーターの/data/local/tmp/TouchInjection.dexへ転送する。試験用ドライバーはAndroid 15のshell環境専用であり、アプリへ同梱しない。指の接触面積や実機の感度を検証する試験ではない。
+
+## 片手モードの試験
+
+`test_one_hand.py`はemulator-5554だけを対象にする。学習用APKとconversion-fixtureを導入し、学習用IMEを選択してから実行する。1回ずつ押して右寄せ・左寄せ・全幅へ戻る順序、左右80％の幅と高さ、ポップアップと余白の操作ボタンがないこと、候補表示中の片手ボタンの非表示と確定後の再表示、再表示とサービス再起動後の配置保存、記号配列とクリップボードを確認する。画面はdistribution/one-hand-cycle-localへ保存する。試験用端末の配置設定だけを変更し、実機の設定・辞書・収集記録は操作しない。検証後は試験用エミュレーターを終了する。
+
+## 文節変更後の未確定範囲
+
+`test_clause_edit.py --serial emulator-5554`で「われわれはうちゅうじんだ」を入力し、前の文節を選んで「ワレワレは」へ変更する。文字列だけでなく、実際の入力欄の未確定範囲が後続に残ることを検査する。後続も「ウチュウジンだ」へ変更し、最終結果「ワレワレはウチュウジンだ」を確認する。conversion-fixtureの試験用ボタンはカーソルを前の文節へ移し、試験表示は入力欄の未確定範囲を取得する。fixtureは配布APKへ含めない。証跡はdistribution/clause-edit-localへ保存する。

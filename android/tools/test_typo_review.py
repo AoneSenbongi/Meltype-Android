@@ -81,6 +81,8 @@ class Tests(unittest.TestCase):
 
     def test_web_access_and_escaping(self):
         self.store.import_bytes(record("<img src=x onerror=alert(1)>", "safe"))
+        punctuation = dict(id=str(uuid.uuid4()), day="2026-10-10", before="test", after=".", kind="punctuation")
+        self.store.import_bytes((json.dumps(punctuation) + "\n").encode())
         app = ReviewApp(self.store, "nonexistent-adb")
         server = ThreadingHTTPServer(("127.0.0.1", 0), app.handler())
         thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
@@ -93,6 +95,11 @@ class Tests(unittest.TestCase):
             self.assertEqual(request("GET", "/api/rows")[0], 403)
             headers = {"X-Review-Token": app.token}
             self.assertEqual(request("GET", "/api/rows", headers=headers)[0], 200)
+            visible = json.loads(request("GET", "/api/rows", headers=headers)[1])["rows"]
+            self.assertEqual(len(visible), 1)
+            self.assertEqual(visible[0]["kind"], "edit")
+            self.assertEqual(len(self.store.rows()), 2)
+            self.assertNotIn("不適切", PAGE)
             self.assertEqual(request("GET", "/", headers={"Host": "evil.example"})[0], 403)
             self.assertEqual(request("GET", "/api/rows", headers={**headers, "Origin": "https://evil.example"})[0], 403)
             self.assertEqual(request("POST", "/api/label", "{}", headers=headers)[0], 400)

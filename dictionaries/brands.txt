@@ -9,6 +9,7 @@
 うぃんどうず Windows
 まっくおーえす macOS
 あいおーえす iOS
+いめ IME
 あんどろいど Android
 うぶんつ Ubuntu
 でびあん Debian
@@ -31,6 +32,7 @@
 でぃすこーど Discord
 すらっく Slack
 ちーむず Teams
+ちーむす Teams
 のーしょん Notion
 ふぃぐま Figma
 きゃんば Canva

@@ -28,4 +28,5 @@ public sealed class BuiltInWordChecker : IWordChecker
     public bool IsAvailable => _words.Count > 0;
 
     public bool IsWord(string lower) => _words.Contains(lower);
+    internal bool IsWord(ReadOnlySpan<char> lower) => _words.GetAlternateLookup<ReadOnlySpan<char>>().Contains(lower);
 }

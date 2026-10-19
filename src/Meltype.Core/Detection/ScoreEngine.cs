@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Yukishiro
 
 using Meltype.Config;
-using Meltype.Learning;
 
 namespace Meltype.Detection;
 
@@ -20,7 +19,6 @@ public sealed class ScoreEngine
     private readonly EnglishDetector _english;
     private readonly DictionaryDetector _dictionary;
     private readonly TypoDetector _typo;
-    private readonly UserModel? _user;
     private readonly Func<Settings> _settings;
 
     public ScoreEngine(
@@ -29,7 +27,6 @@ public sealed class ScoreEngine
         EnglishDetector english,
         DictionaryDetector dictionary,
         TypoDetector typo,
-        UserModel? user,
         Func<Settings> settings)
     {
         _romaji = romaji;
@@ -37,19 +34,18 @@ public sealed class ScoreEngine
         _english = english;
         _dictionary = dictionary;
         _typo = typo;
-        _user = user;
         _settings = settings;
     }
 
     /// <summary>組み込み辞書 (+ ユーザー辞書) から一式を組み立てる。</summary>
-    public static ScoreEngine CreateDefault(UserModel? user, Func<Settings> settings, string? userDictionaryDirectory = null)
+    public static ScoreEngine CreateDefault(Func<Settings> settings, string? userDictionaryDirectory = null)
     {
-        var romaji = new RomajiDetector();
+        var romaji = RomajiDetector.CreateDefault(userDictionaryDirectory);
         var japaneseWords = DictionarySource.Load("japanese.txt", userDictionaryDirectory).ToList();
         var dictionary = new DictionaryDetector(japaneseWords, romaji);
         var english = new EnglishDetector(DictionarySource.Load("english.txt", userDictionaryDirectory).Concat(ProperNouns.Load(userDictionaryDirectory).LowercaseWords));
         var kana = new KanaDetector(japaneseWords, romaji);
-        return new ScoreEngine(romaji, kana, english, dictionary, new TypoDetector(dictionary.Words), user, settings);
+        return new ScoreEngine(romaji, kana, english, dictionary, new TypoDetector(dictionary.Words), settings);
     }
 
     public RomajiDetector Romaji => _romaji;
@@ -70,14 +66,14 @@ public sealed class ScoreEngine
             return Result(input.IsFinal ? Verdict.Unknown : Verdict.Undecided, letters, contributions, "入力なし");
         }
 
-        // 明らかな英字キー (q, x, v, l) はローマ字の一部として読めても、英語として確定する。
-        if (letters.Length == 1 && letters is "l" or "q" or "v" or "x")
+        var useRomaji = settings.InputStyle != InputStyle.Kana;
+        var useKana = settings.InputStyle != InputStyle.Romaji;
+
+        // ローマ字専用では l/q/v/x を一文字で英語とする。かな入力を有効にした設定では、Q/X/V/L はかなキーとして判定する。
+        if (useRomaji && !useKana && letters.Length == 1 && letters is "l" or "q" or "v" or "x")
         {
             return Result(Verdict.English, letters, contributions, "明らかな英字キー");
         }
-
-        var useRomaji = settings.InputStyle != InputStyle.Kana;
-        var useKana = settings.InputStyle != InputStyle.Romaji;
 
         var romajiValid = false;
         var japaneseDictionaryPrefix = false;
@@ -117,7 +113,6 @@ public sealed class ScoreEngine
         }
 
         _english.Evaluate(original, contributions);
-        if (settings.LearningEnabled) _user?.Evaluate(original, contributions);
 
         var japanese = contributions.Sum(c => c.Japanese);
         var english = contributions.Sum(c => c.English);

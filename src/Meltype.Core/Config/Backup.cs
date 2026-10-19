@@ -17,7 +17,7 @@ public static class Backup
     private const int FormatVersion = 1;
 
     /// <summary>バックアップに入れるファイル (データフォルダーからの相対パス)。dictionaries/ はユーザーが足した辞書。</summary>
-    private static readonly string[] RootFiles = ["config.json", "model.json", "conversions.json", "translations.json", "languages.json", "userdict.txt"];
+    private static readonly string[] RootFiles = ["config.json", "conversions.json", "translations.json", "languages.json", "userdict.txt", "snippets.json", "phrases.txt"];
 
     /// <summary>
     /// 戻してよい名前か (バックアップに入れるファイルと同じ名前だけ: 決まった名前か、dictionaries/ の直下の .txt)。
@@ -86,7 +86,8 @@ public static class Backup
     public static int Restore(byte[] content, string dataDirectory)
     {
         using var document = Parse(content);
-        var count = 0;
+        // 先にすべて読む (読めないファイルがあれば、どれも書かずに例外にする。途中まで戻した状態にしない)
+        var files = new List<(string Path, byte[] Bytes)>();
         foreach (var file in document.RootElement.GetProperty("files").EnumerateObject())
         {
             // バックアップに入れるファイルと同じ名前だけを戻す (それ以外の名前は無視)
@@ -94,12 +95,15 @@ public static class Backup
             if (!IsRestorableName(name)) continue;
             var path = Path.GetFullPath(Path.Combine(dataDirectory, name));
             if (!path.StartsWith(Path.GetFullPath(dataDirectory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) continue;
+            files.Add((path, Convert.FromBase64String(file.Value.GetString() ?? "")));
+        }
+        foreach (var (path, bytes) in files)
+        {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             if (File.Exists(path)) File.Copy(path, path + ".before-restore", overwrite: true);
-            File.WriteAllBytes(path, Convert.FromBase64String(file.Value.GetString() ?? ""));
-            count++;
+            File.WriteAllBytes(path, bytes);
         }
-        return count;
+        return files.Count;
     }
 
     private static JsonDocument Parse(byte[] content)

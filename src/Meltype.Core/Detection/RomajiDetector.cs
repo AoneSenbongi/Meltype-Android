@@ -38,12 +38,14 @@ public sealed class RomajiDetector
         ("さ", ["sa"]), ("し", ["shi", "si"]), ("す", ["su"]), ("せ", ["se", "ce"]), ("そ", ["so"]),
         ("しゃ", ["sha", "sya"]), ("しゅ", ["shu", "syu"]), ("しょ", ["sho", "syo"]), ("しぇ", ["she", "sye"]),
         ("た", ["ta"]), ("ち", ["chi", "ti"]), ("つ", ["tsu", "tu"]), ("て", ["te"]), ("と", ["to"]),
-        ("ちゃ", ["cha", "tya", "cya"]), ("ちゅ", ["chu", "tyu", "cyu"]), ("ちょ", ["cho", "tyo", "cyo"]), ("ちぇ", ["che", "tye"]),
+        ("ちゃ", ["cha", "tya", "cya"]), ("ちゅ", ["chu", "tyu", "cyu"]), ("ちょ", ["cho", "tyo", "cyo"]), ("ちぇ", ["che", "tye", "cye"]),
+        ("てゃ", ["tha"]), ("てゅ", ["thu"]), ("てょ", ["tho"]),
         ("な", ["na"]), ("に", ["ni"]), ("ぬ", ["nu"]), ("ね", ["ne"]), ("の", ["no"]),
-        ("にゃ", ["nya"]), ("にゅ", ["nyu"]), ("にょ", ["nyo"]),
+        ("にゃ", ["nya"]), ("にゅ", ["nyu"]), ("にょ", ["nyo"]), ("にぃ", ["nyi"]), ("にぇ", ["nye"]),
         ("は", ["ha"]), ("ひ", ["hi"]), ("ふ", ["fu", "hu"]), ("へ", ["he"]), ("ほ", ["ho"]),
         ("ひゃ", ["hya"]), ("ひゅ", ["hyu"]), ("ひょ", ["hyo"]),
-        ("ふぁ", ["fa"]), ("ふぃ", ["fi"]), ("ふぇ", ["fe"]), ("ふぉ", ["fo"]),
+        ("ふぁ", ["fa"]), ("ふぃ", ["fi", "fyi"]), ("ふぇ", ["fe", "fye"]), ("ふぉ", ["fo"]),
+        ("ふゃ", ["fya"]), ("ふゅ", ["fyu"]), ("ふょ", ["fyo"]),
         ("ま", ["ma"]), ("み", ["mi"]), ("む", ["mu"]), ("め", ["me"]), ("も", ["mo"]),
         ("みゃ", ["mya"]), ("みゅ", ["myu"]), ("みょ", ["myo"]),
         ("や", ["ya"]), ("ゆ", ["yu"]), ("よ", ["yo"]),
@@ -57,11 +59,19 @@ public sealed class RomajiDetector
         ("ざ", ["za"]), ("じ", ["ji", "zi"]), ("ず", ["zu"]), ("ぜ", ["ze"]), ("ぞ", ["zo"]),
         ("じゃ", ["ja", "jya", "zya"]), ("じゅ", ["ju", "jyu", "zyu"]), ("じょ", ["jo", "jyo", "zyo"]), ("じぇ", ["je", "jye", "zye"]),
         ("だ", ["da"]), ("ぢ", ["di"]), ("づ", ["du"]), ("で", ["de"]), ("ど", ["do"]),
+        ("でゃ", ["dha"]), ("でゅ", ["dhu"]), ("でょ", ["dho"]),
         ("ぢゃ", ["dya"]), ("ぢゅ", ["dyu"]), ("ぢょ", ["dyo"]),
         ("ば", ["ba"]), ("び", ["bi"]), ("ぶ", ["bu"]), ("べ", ["be"]), ("ぼ", ["bo"]),
         ("びゃ", ["bya"]), ("びゅ", ["byu"]), ("びょ", ["byo"]),
         ("ぱ", ["pa"]), ("ぴ", ["pi"]), ("ぷ", ["pu"]), ("ぺ", ["pe"]), ("ぽ", ["po"]),
         ("ぴゃ", ["pya"]), ("ぴゅ", ["pyu"]), ("ぴょ", ["pyo"]),
+        ("とぁ", ["twa"]), ("とぃ", ["twi"]), ("とぇ", ["twe"]), ("とぅ", ["twu"]),
+        ("どぁ", ["dwa"]), ("どぃ", ["dwi"]), ("どぇ", ["dwe"]), ("どぅ", ["dwu"]),
+        // Mozc のローマ字入力表にある拗音・外来音の綴り (issue #674)。英語の語の中に出る綴りは足さない: *yi (trying・studying・babying)、hw* (highway・pathway・northwest)、hye (hyena)、sw* (swan・swine)、two・bye・dye・rye、v 系、wo で終わる綴り (ping|wo)
+        ("きぇ", ["kye"]), ("ぎぇ", ["gye"]), ("ぴぇ", ["pye"]), ("みぇ", ["mye"]),
+        ("くぃ", ["kwi"]), ("くぅ", ["kwu"]), ("くぇ", ["kwe"]),
+        ("ぐぃ", ["gwi"]), ("ぐぅ", ["gwu"]), ("ぐぇ", ["gwe"]),
+        ("ずぁ", ["zwa"]), ("ずぃ", ["zwi"]), ("ずぅ", ["zwu"]), ("ずぇ", ["zwe"]),
     ];
 
     // 英語の綴りにほぼ現れない拗音 (sha/cha/ja は shut, chat, jam などで普通に出るので除外)。
@@ -69,6 +79,9 @@ public sealed class RomajiDetector
     [
         "きゃ", "きゅ", "きょ", "にゃ", "にゅ", "にょ", "ひゃ", "ひゅ", "ひょ", "みゃ", "みゅ", "みょ",
         "りゃ", "りゅ", "りょ", "ぎゃ", "ぎゅ", "ぎょ", "びゃ", "びゅ", "びょ", "ぴゃ", "ぴゅ", "ぴょ",
+        "ちぇ",
+        "てゃ", "てゅ", "てょ", "でゃ", "でゅ", "でょ", "にぃ", "にぇ",
+        "とぁ", "とぃ", "とぇ", "とぅ", "どぁ", "どぃ", "どぇ", "どぅ",
     ];
 
     // 変換ボックスでだけ使う綴り (小書き文字・外来音)。英語かどうかの判定には使わない
@@ -83,6 +96,9 @@ public sealed class RomajiDetector
         // 歴史的仮名 (Microsoft IME と同じ綴り。wi / we は ウィンドウ・ウェブ の うぃ / うぇ)
         ("ゐ", ["wyi"]), ("ゑ", ["wye"]),
         ("てぃ", ["thi"]), ("でぃ", ["dhi"]), ("てゅ", ["thu"]), ("でゅ", ["dhu"]), ("とぅ", ["twu"]), ("どぅ", ["dwu"]),
+        ("てゃ", ["tha"]), ("てぇ", ["the"]), ("てょ", ["tho"]), ("でゃ", ["dha"]), ("でぇ", ["dhe"]), ("でょ", ["dho"]),
+        ("にぃ", ["nyi"]), ("にぇ", ["nye"]), ("とぁ", ["twa"]), ("とぃ", ["twi"]), ("とぇ", ["twe"]),
+        ("どぁ", ["dwa"]), ("どぃ", ["dwi"]), ("どぇ", ["dwe"]), ("くぃ", ["qi"]), ("くぇ", ["qe"]), ("くぉ", ["qo"]),
         // c 行 (Microsoft IME と同じ。cake や code まで日本語として読めてしまうので判定には使わない)
         ("か", ["ca"]), ("し", ["ci"]), ("く", ["cu"]), ("こ", ["co"]),
         ("ちぃ", ["cyi", "tyi"]),
@@ -115,12 +131,71 @@ public sealed class RomajiDetector
         return set;
     }
 
+    // ユーザーのローマ字の表 (romaji.txt。AZIK などの拡張ローマ字: kz = かん、kq = かい)。組み込みの綴りより優先する。
+    private readonly Dictionary<string, string>? _custom;
+    private readonly HashSet<string> _customPartials = new(StringComparer.Ordinal);
+    private readonly int _customMaxLength;
+
+    public RomajiDetector() : this(null)
+    {
+    }
+
+    /// <param name="custom">ユーザーの綴り → かな (英小文字だけの綴り)。null なら組み込みの表だけ。</param>
+    public RomajiDetector(IReadOnlyDictionary<string, string>? custom)
+    {
+        if (custom is not { Count: > 0 }) return;
+        _custom = new Dictionary<string, string>(custom, StringComparer.Ordinal);
+        foreach (var spelling in _custom.Keys)
+        {
+            _customMaxLength = Math.Max(_customMaxLength, spelling.Length);
+            for (var i = 1; i < spelling.Length; i++) _customPartials.Add(spelling[..i]);
+        }
+    }
+
+    /// <summary>ユーザー辞書のフォルダーの romaji.txt を読んで作る (無ければ組み込みの表だけ)。</summary>
+    public static RomajiDetector CreateDefault(string? userDictionaryDirectory) => new(LoadCustomTable(userDictionaryDirectory));
+
+    /// <summary>
+    /// ユーザーのローマ字の表 (romaji.txt)。1 行に「綴り<Tab>かな」(空白区切りも可)、行頭の # はコメント。
+    /// 綴りは英小文字だけ (大文字は小文字にする)。英字以外 (; など) を含む行は読まない。
+    /// </summary>
+    public static Dictionary<string, string>? LoadCustomTable(string? userDictionaryDirectory)
+    {
+        if (userDictionaryDirectory is null) return null;
+        var path = Path.Combine(userDictionaryDirectory, "romaji.txt");
+        try
+        {
+            return File.Exists(path) ? ParseCustomTable(File.ReadAllText(path)) : null;
+        }
+        catch (Exception ex)
+        {
+            Diagnostics.Log.Warn($"ローマ字の表 (romaji.txt) を読めませんでした: {ex.Message}");
+            return null;
+        }
+    }
+
+    public static Dictionary<string, string> ParseCustomTable(string text)
+    {
+        var table = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var rawLine in text.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line[0] == '#') continue;
+            var parts = line.Split(['\t', ' ', '　'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2) continue;
+            var spelling = parts[0].ToLowerInvariant();
+            if (!spelling.All(c => c is >= 'a' and <= 'z') || parts[1].Any(c => c is >= 'a' and <= 'z')) continue;
+            table[spelling] = parts[1];
+        }
+        return table;
+    }
+
     private static bool IsVowel(char c) => c is 'a' or 'i' or 'u' or 'e' or 'o';
     private static bool IsConsonant(char c) => c is >= 'a' and <= 'z' && !IsVowel(c);
 
     public RomajiAnalysis Analyze(string letters) => Analyze(letters, strictStart: true, composition: false);
 
-    /// <summary>c 行 (ca / cu / co) を k 行に読み替える (ch は そのまま)。英数状態の判定で、fucarete を fukarete として調べるのに使う。</summary>
+    /// <summary>c 行 (ca / cu / co = か く こ) を k 行に読み替える (ch は そのまま)。英数状態の判定で、fucarete を fukarete として調べるのに使う。</summary>
     public static string ReadCRow(string letters)
     {
         if (!letters.Contains('c')) return letters;
@@ -138,15 +213,8 @@ public sealed class RomajiDetector
     /// </summary>
     public RomajiAnalysis AnalyzeFragment(string letters) => Analyze(letters, strictStart: false, composition: true);
 
-    /// <param name="strictStart">語頭の「ん」「っ」を不正とみなすか (語の途中から解析するときは false)。</param>
-    /// <param name="composition">
-    /// 変換ボックス用なら true: "nn" を常に「ん」にし、小書き文字 (xa, ltu, xn …) や外来音 (vu, thi …) も読む。
-    /// false ならヘボン式で "nni" を ん + に と読む (判定・辞書の見出し語用)。
-    /// </param>
     private RomajiAnalysis Analyze(string letters, bool strictStart, bool composition)
     {
-        // 判定は 1 キーごとに、打った文字のあらゆる区間を何度も解析し直す (長い文では 1 文字で数万回)。
-        // 結果は文字列と引数だけで決まるので、覚えておいて使い回す。
         var cache = composition ? _compositionCache : strictStart ? _strictCache : _looseCache;
         if (cache.TryGetValue(letters, out var cached)) return cached;
         var result = AnalyzeCore(letters, strictStart, composition);
@@ -155,13 +223,12 @@ public sealed class RomajiDetector
         return result;
     }
 
-    /// <summary>覚えておく解析結果の数 (超えたら捨てて覚え直す)。</summary>
     private const int CacheLimit = 50000;
     private readonly ConcurrentDictionary<string, RomajiAnalysis> _strictCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, RomajiAnalysis> _looseCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, RomajiAnalysis> _compositionCache = new(StringComparer.Ordinal);
 
-    private static RomajiAnalysis AnalyzeCore(string letters, bool strictStart, bool composition)
+    private RomajiAnalysis AnalyzeCore(string letters, bool strictStart, bool composition)
     {
         var tokens = new List<RomajiToken>();
         int strongYouon = 0, tsu = 0, sokuon = 0, longVowels = 0;
@@ -176,7 +243,14 @@ public sealed class RomajiDetector
             var c = s[i];
             if (c is < 'a' or > 'z') return Invalid($"'{c}' は英字ではない");
 
-            // ん: "nn" / 子音の前の "n"。"nni" のように母音が続く場合は ん + に (ヘボン式 konnichiwa)。
+            // ユーザーのローマ字の表は、ん・っ の読み方を含めて組み込みの綴りより優先する (AZIK の kk = きん)
+            if (_custom is not null && MatchCustom(s, i) is { } custom)
+            {
+                tokens.Add(custom);
+                i += custom.Romaji.Length;
+                continue;
+            }
+
             if (c == 'n' && i + 1 < s.Length && (s[i + 1] == 'n' || (IsConsonant(s[i + 1]) && s[i + 1] != 'y')))
             {
                 if (i == 0 && strictStart) return Invalid("語頭の「ん」");
@@ -187,7 +261,6 @@ public sealed class RomajiDetector
                 continue;
             }
 
-            // っ: 同じ子音の連続 (kk, tt, ss …) と tch。
             if (i + 1 < s.Length && IsConsonant(c) && c != 'n' &&
                 (s[i + 1] == c || (c == 't' && s[i + 1] == 'c' && i + 2 < s.Length && s[i + 2] == 'h')))
             {
@@ -215,7 +288,7 @@ public sealed class RomajiDetector
             if (matched) continue;
 
             var rest = s[i..];
-            if ((composition ? CompositionPartials : PartialSpellings).Contains(rest) || rest is "n" or "tc")
+            if ((composition ? CompositionPartials : PartialSpellings).Contains(rest) || rest is "n" or "tc" || _customPartials.Contains(rest))
             {
                 return new RomajiAnalysis(true, tokens.ToArray(), rest, null, strongYouon, tsu, sokuon, longVowels);
             }
@@ -225,6 +298,19 @@ public sealed class RomajiDetector
         return new RomajiAnalysis(true, tokens.ToArray(), "", null, strongYouon, tsu, sokuon, longVowels);
     }
 
+    /// <summary>s の i から始まる、ユーザーの表のいちばん長い綴り。無ければ null。</summary>
+    private RomajiToken? MatchCustom(string s, int i)
+    {
+        for (var length = Math.Min(_customMaxLength, s.Length - i); length >= 1; length--)
+        {
+            var piece = s.Substring(i, length);
+            // 表の綴りの頭で入力が終わっている (kz の k だけ) なら、続きを待つ (組み込みの綴りで読まない)
+            if (i + length == s.Length && length < _customMaxLength && _customPartials.Contains(piece) && !_custom!.ContainsKey(piece)) return null;
+            if (_custom!.TryGetValue(piece, out var kana)) return new RomajiToken(piece, kana);
+        }
+        return null;
+    }
+
     private static bool EndsWithVowel(string romaji, char a, char b) =>
         romaji.Length > 0 && (romaji[^1] == a || romaji[^1] == b);
 
@@ -232,6 +318,34 @@ public sealed class RomajiDetector
     /// 変換ボックスの表示用。ローマ字として読めない文字はその文字だけ英字のまま残し、続きを変換する
     /// (MS-IME の「ごおｇ」と同じ振る舞い)。<paramref name="final"/> なら語末の n を ん にする。
     /// </summary>
+    private static readonly Dictionary<string, string> CanonicalSpellings = BuildCanonicalSpellings();
+    private static Dictionary<string, string> BuildCanonicalSpellings()
+    {
+        var spellings = Table.Concat(CompositionTable).GroupBy(e => e.Kana)
+            .ToDictionary(g => g.Key, g => g.First().Spellings[0]);
+        spellings["ん"] = "nn"; spellings["ー"] = "-";
+        return spellings;
+    }
+    public string Canonicalize(string letters, bool final)
+    {
+        var kana = ConvertLenient(letters, final);
+        var spellings = CanonicalSpellings;
+        var result = new StringBuilder();
+        for (var i = 0; i < kana.Length;)
+        {
+            if (kana[i] == 'っ' && i + 1 < kana.Length)
+            {
+                var next = i + 2 < kana.Length && spellings.TryGetValue(kana.Substring(i + 1, 2), out var digraph)
+                    ? digraph : spellings.GetValueOrDefault(kana.Substring(i + 1, 1));
+                if (next != null && !"aiueon".Contains(next[0])) { result.Append(next[0]); i++; continue; }
+            }
+            if (i + 1 < kana.Length && spellings.TryGetValue(kana.Substring(i, 2), out var pair))
+            { result.Append(pair); i += 2; }
+            else { result.Append(spellings.GetValueOrDefault(kana.Substring(i, 1)) ?? kana.Substring(i, 1)); i++; }
+        }
+        return result.ToString();
+    }
+
     public string ConvertLenient(string letters, bool final)
     {
         var builder = new StringBuilder();
@@ -252,18 +366,12 @@ public sealed class RomajiDetector
         return builder.ToString();
     }
 
-    /// <summary>ログ表示用。確定した部分だけをかなにし、途中の子音は英字のまま残す。</summary>
     public string ToKana(string letters)
     {
         var analysis = Analyze(letters);
         return analysis.IsValid ? analysis.Kana + analysis.Partial : letters;
     }
 
-    /// <summary>
-    /// 辞書の見出し語 (ヘボン式) から、実際に打たれうる綴りの揺れ (si/shi, tu/tsu, nn/n …) を列挙する。
-    /// 組み合わせ爆発を防ぐため最大 <paramref name="limit"/> 件。
-    /// </summary>
-    /// <summary>入力途中ではなく完結した語として解析する (語末の n を ん とみなす)。</summary>
     public RomajiAnalysis AnalyzeWord(string word)
     {
         var analysis = Analyze(word);
@@ -309,12 +417,9 @@ public sealed class RomajiDetector
         {
             case "ん":
                 yield return "nn";
-                // 語末の ん は n 一つで書かれることが多い (gohan, nihon)。
                 if (next is null) yield return "n";
-                // 子音 (な行・や行以外) の前なら単独の n でも ん になる。
                 if (next is { } n && n.Kana != "っ" && n.Romaji.Length > 0 && IsConsonant(n.Romaji[0]) && n.Romaji[0] is not ('n' or 'y'))
                     yield return "n";
-                // ヘボン式の「ん + な行」は n 一つで書かれる (konnichiwa)。
                 if (next is { } nn && nn.Romaji.Length > 0 && nn.Romaji[0] == 'n')
                     yield return "n";
                 yield break;

@@ -37,11 +37,8 @@ public sealed class ContextRules
 
     public void AddText(string text)
     {
-        foreach (var rawLine in text.Split('\n'))
+        foreach (var line in Detection.DictionarySource.LinesWithoutComments(text))
         {
-            var line = rawLine;
-            var hash = line.IndexOf('#');
-            if (hash >= 0) line = line[..hash];
             var colon = line.IndexOf(':');
             if (colon < 0) continue;
             var head = line[..colon].Split([' ', '\t', '　'], StringSplitOptions.RemoveEmptyEntries);
@@ -83,7 +80,7 @@ public sealed class ConversionHistory
     private readonly string? _path;
     private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
 
-    private sealed class Entry
+    internal sealed class Entry
     {
         public string Text { get; set; } = "";
         public DateTime Used { get; set; }
@@ -92,17 +89,12 @@ public sealed class ConversionHistory
     public ConversionHistory(string? path)
     {
         _path = path;
-        if (path is null || !File.Exists(path)) return;
-        try
+        Config.DataFile.Load(path, "変換の学習データ", content =>
         {
-            var loaded = JsonSerializer.Deserialize<Dictionary<string, Entry>>(File.ReadAllText(path));
+            var loaded = JsonSerializer.Deserialize(content, Config.ConversionJsonContext.Default.Conversions);
             // 1 文字の読み (き → 記) は、以前の版で覚えてしまったものも使わない (関係ない変換を巻き込むため)。
             if (loaded is not null) foreach (var (reading, entry) in loaded) if (reading.Length >= 2) _entries[reading] = entry;
-        }
-        catch (Exception ex)
-        {
-            Diagnostics.Log.Warn($"変換の学習データを読めませんでした: {ex.Message}");
-        }
+        });
     }
 
     /// <summary>学習した内容が変わるたびに増える (変換結果のキャッシュを捨てるため)。</summary>
@@ -145,15 +137,23 @@ public sealed class ConversionHistory
         Save();
     }
 
+    /// <summary>sinceUtc より後に覚えた (使った) 変換を忘れる (トレイの「最近の学習を消す」)。忘れた数を返す。</summary>
+    public int ForgetSince(DateTime sinceUtc)
+    {
+        var recent = _entries.Where(e => e.Value.Used >= sinceUtc).Select(e => e.Key).ToList();
+        if (recent.Count == 0) return 0;
+        foreach (var reading in recent) _entries.Remove(reading);
+        Version++;
+        Save();
+        return recent.Count;
+    }
+
     private void Save()
     {
         if (_path is null) return;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            var temp = _path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(_entries));
-            File.Move(temp, _path, overwrite: true);
+            Config.DataFile.Write(_path, temp => File.WriteAllText(temp, JsonSerializer.Serialize(_entries, Config.ConversionJsonContext.Default.Conversions)));
         }
         catch (Exception ex)
         {

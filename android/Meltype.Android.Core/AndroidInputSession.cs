@@ -11,6 +11,12 @@ public sealed class AndroidInputSession : ICompositionHost
     private readonly CaptureGate _gate = new(() => { });
     private readonly CompositionController _controller;
     private readonly Action<int, string, CompositionView?> _output;
+    private static readonly Lazy<CandidateDictionary> BuiltInCandidates = new(() => CandidateDictionary.Load(null));
+    private readonly Func<InputPreferences> _preferences;
+    private readonly Func<string?>? _clipboard;
+    private bool _clipboardReadAllowed, _clipboardRead;
+    private string? _clipboardValue;
+    private readonly Func<(string? Before, string? After)>? _surrounding;
     private char? _character;
     private long _time;
     private bool _english;
@@ -22,7 +28,8 @@ public sealed class AndroidInputSession : ICompositionHost
     {
         if (_english || ChoosingBrackets || string.IsNullOrEmpty(View?.Text)) return;
         Katakana = !Katakana;
-        Key(Katakana ? 0x76 : 0x75);
+        if (Katakana) Key(0x76);
+        else _controller.RestoreAutomaticMode();
     }
     private string[]? _brackets;
     private int _bracketIndex;
@@ -31,7 +38,7 @@ public sealed class AndroidInputSession : ICompositionHost
     {
         Commit();
         _brackets = quotes ? ["「」", "｢｣", "『』", "【】"] : ["()", "（）", "{}", "｛｝", "[]", "［］"];
-        _bracketIndex = 0;
+        _bracketIndex = quotes ? 0 : _preferences().FullWidthParentheses ? 1 : 0;
         ShowBrackets();
     }
     private void ShowBrackets()
@@ -43,19 +50,54 @@ public sealed class AndroidInputSession : ICompositionHost
     {
         var pair = _brackets![_bracketIndex];
         _brackets = null; View = null;
-        _output(7, pair, null);
+        _output(_preferences().CursorIntoBrackets ? 7 : 1, pair, null);
     }
 
     public AndroidInputSession(IKanjiConverter converter, Func<string, IReadOnlyList<string>> candidates,
         Action<int, string, CompositionView?> output, Func<InputPreferences>? preferences = null, bool learningAllowed = true,
-        AndroidUserDictionary? userDictionary = null)
+        AndroidUserDictionary? userDictionary = null, PersonalRomajiTypos? personalTypos = null,
+        Func<string?>? clipboard = null, Func<(string? Before, string? After)>? surrounding = null, string? stateDirectory = null)
     {
         _output = output;
         preferences ??= () => new InputPreferences();
-        _controller = new CompositionController(_gate, CompositionDetector.CreateDefault(), converter, this,
+        _preferences = preferences; _clipboard = learningAllowed ? clipboard : null; _surrounding = surrounding;
+        string? StateFile(string file) => learningAllowed && stateDirectory != null ? System.IO.Path.Combine(stateDirectory, file) : null;
+        var languages = new LanguageMemory(StateFile("language-memory.json"));
+        var detector = CompositionDetector.CreateDefault();
+        if (learningAllowed && preferences().LearningEnabled) detector.Memory = languages;
+        var predictor = new Predictor(new PhraseHistory(StateFile("phrase-history.tsv")), userDictionary?.CompositionDictionary, null);
+        _controller = new CompositionController(_gate, detector, converter, this,
             new CompositionOptions { FullWidthCommaPeriod = true, Comma = () => preferences().Comma[0],
                 Period = () => preferences().Period[0], LearningEnabled = () => learningAllowed && preferences().LearningEnabled, LiveConversion = () => true,
+                Candidates = BuiltInCandidates.Value,
+                Predictor = predictor, Languages = languages,
+                Predictions = () => learningAllowed && preferences().LearningEnabled && preferences().Predictions,
+                Learning = () => learningAllowed && preferences().LearningEnabled,
+                LogKeyIntervals = () => learningAllowed && preferences().LearningEnabled && preferences().LogKeyIntervals,
+                CursorIntoBrackets = () => preferences().CursorIntoBrackets,
+                CalculatorCandidates = () => preferences().CalculatorCandidates,
+                ConsonantAbbreviations = () => preferences().ConsonantAbbreviations,
+                ClipboardCandidates = () => preferences().ClipboardCandidates,
+                EnglishNamePredictions = () => preferences().EnglishNamePredictions,
+                FullWidthParentheses = () => preferences().FullWidthParentheses,
+                SquareBrackets = () => preferences().SquareBrackets,
+                FullWidthSlash = () => preferences().FullWidthSlash,
+                LaughterAfterKana = () => preferences().LaughterAfterKana,
+                EnterCommitsAsShown = () => preferences().EnterCommitsAsShown,
+                EscStepsBack = () => preferences().EscStepsBack,
+                EscRevertsSelectedClause = () => preferences().EscRevertsSelectedClause,
+                FunctionKeysAffectSelectedClause = () => preferences().FunctionKeysAffectSelectedClause,
+                AlphanumericKeyStartsAsTyped = () => preferences().AlphanumericKeyStartsAsTyped,
+                EnglishFirstInput = () => preferences().EnglishFirstInput,
+                ContextualLearning = () => preferences().ContextualLearning,
+                ShowTypedKeys = () => preferences().ShowTypedKeys,
                 UserDictionary = userDictionary?.CompositionDictionary,
+                UserDictionaryOverrides = false, LowercaseFinalNCandidates = true,
+                PersonalRomajiFix = personalTypos == null ? null : (letters, final) =>
+                    learningAllowed && preferences().LearningEnabled &&
+                    (userDictionary?.Lookup(new Meltype.Detection.RomajiDetector().ConvertLenient(letters, true)).Count ?? 0) == 0
+                        ? personalTypos.Fix(letters, final) : null,
+                CorrectTypos = () => learningAllowed && preferences().LearningEnabled,
                 MoreCandidates = reading => (userDictionary?.Lookup(reading) ?? []).Concat(candidates(reading)).Distinct().ToArray(), AutoCorrect = () => false });
     }
 
@@ -77,8 +119,19 @@ public sealed class AndroidInputSession : ICompositionHost
         Key(character switch
     {
         ' ' => 0x20, ',' => 0xBC, '.' => 0xBE, '?' or '/' => 0xBF,
-        '-' => 0xBD, '\n' => 0x0D, _ => char.ToUpperInvariant(character)
+        '-' or '_' => 0xBD, '=' or '+' => 0xBB, '[' or '{' => 0xDB, ']' or '}' => 0xDD,
+        '\\' or '|' => 0xDC, ';' or ':' => 0xBA, '\'' or '"' => 0xDE, '`' or '~' => 0xC0,
+        '(' => 0x39, ')' => 0x30, '*' => 0x38, '!' => 0x31, '@' => 0x32, '#' => 0x33,
+        '$' => 0x34, '%' => 0x35, '^' => 0x36, '&' => 0x37, '<' => 0xBC, '>' => 0xBE,
+        '\n' => 0x0D, _ => char.ToUpperInvariant(character)
         }, character);
+    }
+
+    public void Space(bool fullWidth)
+    {
+        if (!fullWidth) { Character(' '); return; }
+        Commit();
+        CommitText("　");
     }
 
     // Conservative local heuristic, not a grammatical or semantic analysis.
@@ -91,8 +144,10 @@ public sealed class AndroidInputSession : ICompositionHost
         return !english && SentenceEndings.Any(ending => endingText.EndsWith(ending, StringComparison.Ordinal)) ? '.' : ',';
     }
 
-    public void Key(int code, char? character = null)
+    public void Key(int code, char? character = null, bool shift = false)
     {
+        if (!_english && code == 0x20 && !_controller.HasDirectReadingCandidates && _controller.CommitVisibleEnglish(" ")) return;
+        if (!_english && code == 0x0D && _preferences().EnterCommitsAsShown && _controller.CommitVisibleEnglish()) return;
         if (ChoosingBrackets)
         {
             if (code is 0x08 or 0x1B) { _brackets = null; Hide(); return; }
@@ -110,13 +165,51 @@ public sealed class AndroidInputSession : ICompositionHost
             _controller.CommitSelectedPrefix(); return;
         }
         _character = character;
-        if (_english) { Replay(new KeyEvent(code, 0, false, false, false, ++_time)); _character = null; return; }
-        foreach (var up in new[] { false, true })
+        if (_english) { Replay(new KeyEvent(code, 0, false, false, false, NextTime())); _character = null; return; }
+        // Scope the modifier to this arrow so it cannot affect later characters.
+        var resize = shift && code is 0x25 or 0x27;
+        if (resize) PumpKey(0x10, false);
+        _clipboardReadAllowed = code is 0x20 or 0x1C;
+        _clipboardRead = false; _clipboardValue = null;
+        try
         {
-            _gate.OnKey(new KeyEvent(code, 0, false, up, false, ++_time), e => e.IsDown);
-            _controller.Pump();
+            PumpKey(code, false);
+            PumpKey(code, true);
         }
+        finally { if (resize) PumpKey(0x10, true); _clipboardReadAllowed = false; _clipboardValue = null; }
         _character = null;
+    }
+
+    private long NextTime() => _time = Math.Max(_time + 1, Environment.TickCount64);
+
+    private void PumpKey(int code, bool up)
+    {
+        _gate.OnKey(new KeyEvent(code, 0, false, up, false, NextTime()), e => e.IsDown);
+        _controller.Pump();
+    }
+
+    public void SpaceKey(bool shift)
+    {
+        var p = _preferences();
+        if (p.FullWidthSpaceByDefault ? !shift : shift && !p.ShiftSpaceHalfWidth) Space(true);
+        else if (shift) { Commit(); CommitText(" "); }
+        else Character(' ');
+    }
+    public void SelectPrediction(int index) => _controller.CommitPredictionAt(index);
+    public void ForgetPrediction(int index) => _controller.ForgetPredictionAt(index);
+    public string? ClipboardText
+    {
+        get
+        {
+            if (!_clipboardReadAllowed) return null;
+            if (!_clipboardRead) { _clipboardValue = _clipboard?.Invoke(); _clipboardRead = true; }
+            return _clipboardValue;
+        }
+    }
+
+    public void SelectPosition(int offset)
+    {
+        if (!_english && !ChoosingBrackets) _controller.SelectClauseAt(offset);
     }
 
     public void Select(int index)
@@ -128,12 +221,12 @@ public sealed class AndroidInputSession : ICompositionHost
         else if (!_controller.SelectLiveCandidate(view.SelectedClause, view.Candidates[index])) return;
         _controller.CommitSelectedPrefix();
     }
-    public void Commit() { if (ChoosingBrackets) CommitBracket(); else _controller.CommitPending(); }
+    public void Commit() { if (ChoosingBrackets) CommitBracket(); else if (!_controller.CommitVisibleEnglish()) _controller.CommitPending(); }
     public void Reset() { _controller.Reset(); _controller.ResetContext(); _gate.Abort(); _brackets = null; Katakana = false; View = null; }
     public void CommitText(string text) => _output(1, text, null);
     public void Show(CompositionView view)
     {
-        View = view.Converting ? view : _controller.LiveCandidateView(view);
+        View = view.Converting || !_preferences().ShowCandidatesWhileTyping ? view : _controller.LiveCandidateView(view);
         _output(0, View.Text, View);
     }
     public void Hide() { Katakana = false; View = null; _output(2, "", null); }
@@ -143,9 +236,13 @@ public sealed class AndroidInputSession : ICompositionHost
         if (e.IsUp) return;
         if (e.Vk == 0x08) DeleteBackward(1);
         else if (e.Vk == 0x0D) _output(4, "", null);
+        else if (e.Vk is 0x25 or 0x27) _output(e.Vk == 0x25 ? 5 : 6, "", null);
         else if (_character is { } c) CommitText(c.ToString());
     }
     public void Replay(MouseButtonEvent e) { }
     public char? CharFromKey(KeyEvent e, bool shift) => _character;
-    public void RequestSurroundingText(Action<string?, string?> callback) => callback(null, null);
+    public void RequestSurroundingText(Action<string?, string?> callback)
+    {
+        var text = _surrounding?.Invoke(); callback(text?.Before, text?.After);
+    }
 }
