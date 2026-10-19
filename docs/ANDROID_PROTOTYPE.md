@@ -1,6 +1,8 @@
-# Android試作版
+# Android版の構成・ビルド・導入
 
 Androidのキーボードとして選択する独立したアプリを作る。Windows版のプログラムは変更しない。QWERTYでローマ字入力し、Meltypeの日英判別とMozcのライブ変換を使う。文字は使用中のアプリの入力欄へ未確定文字として表示する。
+
+現行1.0.0の導入・全操作は[利用ガイド](ANDROID_USER_GUIDE.md)を参照してください。以下の版番号付きの節は開発経緯を含みます。
 
 ## 構成
 
@@ -70,3 +72,6 @@ MeltypeのGPLと元作者の表記を維持する。Mozcと同梱辞書・依存
 ## 0.4.1の起動不具合対応
 
 Release APKはRebuildで作り直し、android/tools/check_apk_jni.pyで両ABIの起動用関数を検査する。原因と再現手順はANDROID_STARTUP_0_4_0.mdを参照する。公開前に配布APK自体のAndroidでの起動と入力を確認することを原則とする。0.4.1候補では静的検査まで確認済みで、端末上の起動・入力は未確認である。
+
+## 1.0.0のJNI検査
+.NET Androidのmarshal methodsを明示的に無効にし、実行時のコールバック登録を使う。`check_apk_jni.py --registration dynamic <APK>`でDEX内のActivity/Serviceの登録記述と、両ABIの登録用ネイティブ関数を検査する。marshal方式のAPKは既定の検査で個別のエントリーポイントを確認する。方式を推測して検査を省略する処理は入れない。いずれも最終APKの実行による起動・Mozc・入力欄の検査と組み合わせる。

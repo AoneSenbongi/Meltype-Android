@@ -6,7 +6,7 @@
     <ApplicationId>jp.aonesenbongi.meltype</ApplicationId>
     <ApplicationTitle>Meltype</ApplicationTitle>
     <ApplicationVersion>6</ApplicationVersion>
-    <ApplicationDisplayVersion>0.5.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
     <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <AndroidLinkMode>None</AndroidLinkMode>
@@ -15,15 +15,6 @@
     <AndroidNeedsInternetPermission>false</AndroidNeedsInternetPermission>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(TrainingBuild)' == 'true'">
-    <ApplicationId>jp.aonesenbongi.meltype.learning</ApplicationId>
-    <ApplicationTitle>Meltype 学習用</ApplicationTitle>
-    <ApplicationDisplayVersion>0.5.0-learning</ApplicationDisplayVersion>
-    <ApplicationVersion>6</ApplicationVersion>
-    <AndroidManifest>Properties/AndroidManifest.Training.xml</AndroidManifest>
-    <AndroidDebuggable>true</AndroidDebuggable>
-    <DefineConstants>$(DefineConstants);TRAINING_BUILD</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Meltype.Android.Core/Meltype.Android.Core.csproj" />

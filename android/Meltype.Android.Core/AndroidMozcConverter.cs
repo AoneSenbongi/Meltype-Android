@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 using System.Diagnostics;
-
-
 using System.Text;
-
-
 using Meltype.Composition;
+
 namespace Meltype.AndroidCore;
 
 /// <summary>Embedded OSS Mozc with a private session. Learning is explicit and verifies every selected clause.</summary>
@@ -28,7 +25,9 @@ public sealed class AndroidMozcConverter : IKanjiConverter, ILearningConverter
         lock (_gate)
         {
             if (_candidates.TryGetValue(reading, out var cached)) return cached;
-            ConvertClauses(reading);
+            var deadline = Stopwatch.StartNew();
+            var clauses = ConvertCore(reading, null, deadline);
+            if (clauses is { Count: > 1 }) ConvertCore(reading, null, deadline, singleClause: true);
             return _candidates.GetValueOrDefault(reading) ?? [];
         }
     }
@@ -38,12 +37,12 @@ public sealed class AndroidMozcConverter : IKanjiConverter, ILearningConverter
         lock (_gate) return ConvertCore(hiragana, context);
     }
 
-    private IReadOnlyList<ConversionClause>? ConvertCore(string hiragana, string? context)
+    private IReadOnlyList<ConversionClause>? ConvertCore(string hiragana, string? context, Stopwatch? operationDeadline = null, bool singleClause = false)
     {
         if (hiragana.Length is 0 or > 100 || hiragana.Any(char.IsControl)) return null;
         ulong session = 0;
         _candidates.Clear();
-        var deadline = Stopwatch.StartNew();
+        var deadline = operationDeadline ?? Stopwatch.StartNew();
         Proto Call(int kind, byte[]? payload = null)
         {
             // No config, submit, shutdown, reset-history, or dictionary commands.
@@ -67,9 +66,16 @@ public sealed class AndroidMozcConverter : IKanjiConverter, ILearningConverter
             var update = Proto.Number(1, 26).Concat(Proto.Blob(11, Proto.String(1, hiragana))).ToArray();
             Call(5, Proto.Blob(4, update).Concat(surrounding).ToArray());
             var output = Call(3, Proto.Blob(3, Proto.Number(3, 4)).Concat(surrounding).ToArray()); // SPACE
-            var clauses = output.Message(5).Groups(2)
-                .Select(p => new ConversionClause(p.Text(6), p.Text(4))).ToList();
-            if (clauses.Count == 0 || !SameReading(string.Concat(clauses.Select(c => c.Reading)), hiragana)) return null;
+            var clauses = ReadClauses(output);
+            if (!MatchesReading(clauses, hiragana)) return null;
+            if (singleClause)
+            {
+                var merged = ExtendCandidateClause(output, hiragana, () =>
+                    Call(3, Proto.Blob(3, Proto.Number(3, 7).Concat(Proto.Number(4, 4)).ToArray())));
+                if (merged is null) return null;
+                output = merged;
+                clauses = ReadClauses(output);
+            }
             var offset = 0;
             for (var i = 0; i < clauses.Count; i++)
             {
@@ -100,6 +106,26 @@ public sealed class AndroidMozcConverter : IKanjiConverter, ILearningConverter
                 try { Call(2); } catch (Exception ex) { Diagnostics.Log.Warn($"Mozc試験セッションを破棄できませんでした: {ex.Message}"); }
             }
         }
+    }
+
+    private static List<ConversionClause> ReadClauses(Proto output) => output.Message(5).Groups(2)
+        .Select(p => new ConversionClause(p.Text(6), p.Text(4))).ToList();
+
+    private static bool MatchesReading(IReadOnlyList<ConversionClause> clauses, string reading) =>
+        clauses.Count > 0 && SameReading(string.Concat(clauses.Select(c => c.Reading)), reading);
+
+    // Only candidate lookup merges clauses; ordinary conversion retains Mozc's segmentation.
+    private static Proto? ExtendCandidateClause(Proto output, string reading, Func<Proto> extend)
+    {
+        var clauses = ReadClauses(output);
+        for (var step = 0; clauses.Count > 1 && step < reading.Length; step++)
+        {
+            var previousLength = clauses[0].Reading.Length;
+            output = extend();
+            clauses = ReadClauses(output);
+            if (!MatchesReading(clauses, reading) || clauses[0].Reading.Length <= previousLength) return null;
+        }
+        return clauses.Count == 1 ? output : null;
     }
 
     private static char FoldSymbol(char c) => c is >= '！' and <= '～' && !char.IsLetterOrDigit(c) ? (char)(c - 0xFEE0) : c;

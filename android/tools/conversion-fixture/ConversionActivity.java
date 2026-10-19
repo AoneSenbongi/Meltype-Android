@@ -28,7 +28,7 @@ public class ConversionActivity extends Activity {
         select.setText("Select first clause");
         select.setContentDescription("fixture-select-first");
         select.setFocusable(false);
-        select.setOnClickListener(v -> editor.setSelection(1));
+        select.setOnClickListener(v -> editor.setSelection(getIntent().getIntExtra("select", 1)));
         root.addView(select);
         Button copy = new Button(this);
         copy.setText("Copy test text");

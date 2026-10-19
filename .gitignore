@@ -42,3 +42,7 @@ training-data/
 
 # Local verification helpers and extracted Python dependencies
 work/
+
+# Session state remains local and is not a public product document
+docs/CURRENT_STATE.md
+docs/MIGRATION_AUDIT.md

@@ -163,6 +163,8 @@ public sealed record CompositionOptions
 
     /// <summary>変換前の Tab で変換を始めるか (設定、issue #219)。</summary>
     public Func<bool> TabConversion { get; init; } = () => false;
+    /// <summary>Androidのソフトキーで、自動英語判定からShift＋矢印の文節変更へ入る。</summary>
+    public bool ShiftArrowsConvertAutoEnglish { get; init; }
 
     /// <summary>変換したあとに続けて打っても確定せず、変換ボックスに残すか (設定。issue #123)。</summary>
     public Func<bool> ContinueAfterConversion { get; init; } = () => false;
@@ -946,7 +948,8 @@ public sealed class CompositionController
             case VirtualKeys.F8: SetMode(DisplayMode.HalfWidthKatakana); _modeByKey = true; return;
             case VirtualKeys.F9: SetAlphanumericMode(DisplayMode.FullWidthAlphanumeric); _modeByKey = true; return;
             case VirtualKeys.F10: SetAlphanumericMode(DisplayMode.HalfWidthAlphanumeric); _modeByKey = true; return;
-            case VirtualKeys.Left or VirtualKeys.Right or VirtualKeys.Up or VirtualKeys.Down when !_text.IsAlphanumeric:
+            case VirtualKeys.Left or VirtualKeys.Right or VirtualKeys.Up or VirtualKeys.Down when
+                !_text.IsAlphanumeric || (_options.ShiftArrowsConvertAutoEnglish && _text.Mode == DisplayMode.Auto && _swallowedShift.Count > 0 && vk is VirtualKeys.Left or VirtualKeys.Right):
                 // 変換前でも矢印キーで文節の選択に入る (Mac のライブ変換と同じ)。
                 EnterClauseSelection(vk);
                 return;
@@ -1500,9 +1503,9 @@ public sealed class CompositionController
     /// <summary>変換前に矢印キーを押したとき: 文節に区切って、← なら最後の文節、→ なら最初の文節を選ぶ。</summary>
     private void EnterClauseSelection(int vk)
     {
-        StartConversion();
-        if (!_converting) return;
         var shift = _swallowedShift.Count > 0;
+        StartConversion(preferJapanese: shift && _options.ShiftArrowsConvertAutoEnglish);
+        if (!_converting) return;
         _selectedClause = vk == VirtualKeys.Left ? _clauses.Count - 1 : 0;
         if (shift && vk is VirtualKeys.Left or VirtualKeys.Right) Resize(vk == VirtualKeys.Left ? -1 : +1);
         else if (vk == VirtualKeys.Up) NextCandidate(-1);

@@ -68,17 +68,6 @@ internal static class KeyboardInteractionTests
         if (restarted.Text != null) throw new Exception("Ineligible first editor must consume copy");
         clips.Add("copied");
         if (!clips.Items.Contains("copied")) throw new Exception("Dismiss must retain clipboard history");
-        var folder = Path.Combine(Path.GetTempPath(), "meltype-punctuation-"+Guid.NewGuid());
-        try
-        {
-            var store = new TypoTrainingStore(folder,()=>now);
-            store.AppendPunctuation("文末", "．"); if(store.Count!=0) throw new Exception("Captured without opt-in");
-            store.Start(); store.AppendPunctuation("文章です", "．"); store.AppendPunctuation("途中", "，");
-            store.AppendPunctuation("", "．"); store.AppendPunctuation("secret", "!"); store.AppendPunctuation("English only", ".");
-            if(store.Count!=2) throw new Exception("Punctuation capture filtering failed");
-            store.Stop(); store.AppendPunctuation("停止中", "．");
-            if(store.Count!=2 || !File.ReadAllText(Path.Combine(folder,"events.jsonl")).Contains("punctuation")) throw new Exception("Punctuation stop or kind failed");
-        } finally { if(Directory.Exists(folder)) Directory.Delete(folder,true); }
         Console.WriteLine("PASS: long press without extra letter, cancellation, Unicode cursor, clipboard bounds/privacy/expiry");
     }
 }

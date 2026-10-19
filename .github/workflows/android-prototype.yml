@@ -70,7 +70,7 @@ jobs:
           python3 android/tools/collect_notices.py /tmp/dotnet-notices.txt "$DOTNET_ROOT/packs"
           cat /tmp/dotnet-notices.txt >> android/Meltype.Android/Assets/THIRD_PARTY_NOTICES.txt
           dotnet build android/Meltype.Android -c Release -t:Rebuild -p:AndroidSdkDirectory="$ANDROID_HOME" -p:JavaSdkDirectory="$JAVA_HOME"
-          python3 android/tools/check_apk_jni.py android/Meltype.Android/bin/Release/net10.0-android/*-Signed.apk
+          python3 android/tools/check_apk_jni.py --registration dynamic android/Meltype.Android/bin/Release/net10.0-android/*-Signed.apk
           mkdir -p android-distribution
           cp android/Meltype.Android/bin/Release/net10.0-android/*-Signed.apk android-distribution/Meltype-Android-prototype.apk
           cp LICENSE docs/ANDROID_PROTOTYPE.md android/Meltype.Android/Assets/THIRD_PARTY_NOTICES.txt android-distribution/

@@ -16,17 +16,22 @@ if (args is ["--audit-personal-typos", var model, var analysis, var report])
     return;
 }
 
+if (typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.TypoTrainingStore") != null ||
+    typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.TypoEditCapture") != null)
+    throw new Exception("Release contains typo-acquisition capability");
+MozcCandidateTests.Run();
 Feature130Tests.Run();
 AdaptiveInputTests.Run();
 PersonalRomajiTests.Run();
 ConversionSelectionTests.Run();
 ConversionSelectionTests.ResizeTests();
+ConversionSelectionTests.MisclassifiedEnglishTests();
 ConversionSelectionTests.SpaceTests();
 ConversionSelectionTests.CandidateTests();
 NumericKeyboardTests.Run();
 EditorCompositionTests.Run();
 KeyboardInteractionTests.Run();
-TypoTrainingTests.Run();
+InputPersonalizationTests.Run();
 InputSettingTests.Run();
 UserDictionaryTests.Run();
 BracketConversionTests.Run();

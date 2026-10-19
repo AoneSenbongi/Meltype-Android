@@ -16,11 +16,7 @@ using Meltype.Config;
 
 namespace Meltype.Mobile;
 
-#if TRAINING_BUILD
-[Service(Label = "Meltype 学習用", Permission = "android.permission.BIND_INPUT_METHOD", Exported = true)]
-#else
-[Service(Label = "Meltype Android 試作版", Permission = "android.permission.BIND_INPUT_METHOD", Exported = true)]
-#endif
+[Service(Label = "Meltype Android", Permission = "android.permission.BIND_INPUT_METHOD", Exported = true)]
 [IntentFilter(new[] { "android.view.InputMethod" })]
 [MetaData("android.view.im", Resource = "@xml/input_method")]
 public sealed class KeyboardService : InputMethodService
@@ -68,11 +64,6 @@ public sealed class KeyboardService : InputMethodService
     private InputPreferenceStore? _preferences;
     private InputPreferences _activePreferences = new();
     private char _punctuationInput = ',';
-#if TRAINING_BUILD
-    private TypoTrainingStore? _trainingStore;
-    private TypoEditCapture? _editCapture;
-    private bool _collectAllowed;
-#endif
 
     public override void OnCreate()
     {
@@ -81,21 +72,6 @@ public sealed class KeyboardService : InputMethodService
         _oneHandMode = _layoutPreferences!.GetInt("one-hand-mode", 0);
         if (_oneHandMode is < 0 or > 2) _oneHandMode = 0;
         _preferences = new InputPreferenceStore(System.IO.Path.Combine(FilesDir!.AbsolutePath, "input-preferences.json"));
-#if TRAINING_BUILD
-        _trainingStore = new TypoTrainingStore(System.IO.Path.Combine(FilesDir!.AbsolutePath, "typo-training"));
-        _editCapture = new TypoEditCapture((before, after) =>
-        {
-            _worker?.Post(() =>
-            {
-                try { if (_preferences!.Current.LearningEnabled) _trainingStore.Append(before, after); }
-                catch (IOException)
-                {
-                    try { _trainingStore.Stop(); } catch (IOException) { }
-                    _main?.Post(() => Toast.MakeText(this, "履歴を保存できないため収集を停止しました。", ToastLength.Long)!.Show());
-                }
-            });
-        });
-#endif
         _main = new Handler(Looper.MainLooper!);
         _thread = new HandlerThread("MeltypeInput"); _thread.Start();
         _worker = new Handler(_thread.Looper!);
@@ -225,9 +201,6 @@ public sealed class KeyboardService : InputMethodService
         _mode = AddKey(controls, "日英", () =>
         {
             _predictionPrefix = "";
-#if TRAINING_BUILD
-            _editCapture?.Cancel();
-#endif
             if (_restricted || !_ready) return;
             if (!_english && !_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text))
             { Queue(() => _session?.ToggleKana()); return; }
@@ -291,12 +264,8 @@ public sealed class KeyboardService : InputMethodService
         _restricted = inputClass is InputTypes.ClassNumber or InputTypes.ClassPhone or InputTypes.ClassDatetime ||
             variation is InputTypes.TextVariationPassword or InputTypes.TextVariationVisiblePassword or InputTypes.TextVariationWebPassword;
         var allowLearning = !_restricted && ((int)(attribute?.ImeOptions ?? 0) & 0x1000000) == 0;
-        _adaptiveAllowed = TypoTrainingPolicy.Allows((int)type, (int)(attribute?.ImeOptions ?? 0));
+        _adaptiveAllowed = InputPersonalizationPolicy.Allows((int)type, (int)(attribute?.ImeOptions ?? 0));
         var personalCandidatesAllowed = _adaptiveAllowed;
-#if TRAINING_BUILD
-        _editCapture?.Cancel();
-        _collectAllowed = TypoTrainingPolicy.Allows((int)type, (int)(attribute?.ImeOptions ?? 0));
-#endif
         _candidates?.RemoveAllViews();
         _candidateSignature = null;
         if (_hide != null) _hide.Visibility = ViewStates.Visible;
@@ -326,10 +295,6 @@ public sealed class KeyboardService : InputMethodService
 
     public override void OnFinishInput()
     {
-#if TRAINING_BUILD
-        _editCapture?.Cancel();
-        _collectAllowed = false;
-#endif
         CancelTouches();
         CurrentInputConnection?.FinishComposingText();
         _preeditActive = false; _shownView = null; _choosingBrackets = false; _shiftState.Reset();
@@ -350,11 +315,6 @@ public sealed class KeyboardService : InputMethodService
     public override void OnUpdateSelection(int oldSelStart, int oldSelEnd, int newSelStart, int newSelEnd, int candidatesStart, int candidatesEnd)
     {
         base.OnUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd);
-#if TRAINING_BUILD
-        if (newSelStart != newSelEnd || candidatesStart >= 0 && newSelEnd != candidatesEnd ||
-            candidatesStart < 0 && _preeditActive || candidatesStart < 0 && Math.Abs(newSelEnd - oldSelEnd) > 1)
-            _editCapture?.Cancel();
-#endif
         if (EditorComposition.ShouldReset(_preeditActive, newSelStart, newSelEnd, candidatesStart, candidatesEnd))
         {
             CurrentInputConnection?.FinishComposingText();
@@ -381,24 +341,12 @@ public sealed class KeyboardService : InputMethodService
         _predictionPrefix = char.ToLowerInvariant(c) is >= 'a' and <= 'z'
             ? (_predictionPrefix + char.ToLowerInvariant(c))[^Math.Min(_predictionPrefix.Length + 1, 32)..] : "";
         if (_restricted) { CurrentInputConnection?.CommitText(c.ToString(), 1); return; }
-#if TRAINING_BUILD
-        if (Collecting())
-        {
-            if (char.IsWhiteSpace(c) || char.IsPunctuation(c)) FinishTrainingQueued();
-            else _editCapture?.Typed();
-        }
-        else _editCapture?.Cancel();
-#endif
         Queue(() => _session?.Character(c));
     }
     private void InputSpace()
     {
         _clipboardSuggestion.Dismiss();
         _predictionPrefix = "";
-#if TRAINING_BUILD
-        if (Collecting()) FinishTrainingQueued();
-        else _editCapture?.Cancel();
-#endif
         var shifted = _shiftState.Active;
         var p = _preferences!.Current;
         var wide = p.FullWidthSpaceByDefault ? !shifted : shifted && !p.ShiftSpaceHalfWidth;
@@ -410,19 +358,6 @@ public sealed class KeyboardService : InputMethodService
     {
         _clipboardSuggestion.Dismiss();
         _predictionPrefix = key == 0x08 && _predictionPrefix.Length > 0 ? _predictionPrefix[..^1] : "";
-#if TRAINING_BUILD
-        if (Collecting())
-        {
-            if (key == 0x08)
-            {
-                if (_editCapture?.Pending != true)
-                    _editCapture?.BeforeDelete(CurrentInputConnection?.GetTextBeforeCursor(64, (GetTextFlags)0));
-            }
-            else if (key == 0x0D) FinishTrainingQueued();
-            else _editCapture?.Cancel();
-        }
-        else _editCapture?.Cancel();
-#endif
         if (_restricted)
         {
             if (key == 0x08) CurrentInputConnection?.DeleteSurroundingTextInCodePoints(1, 0);
@@ -485,19 +420,6 @@ public sealed class KeyboardService : InputMethodService
             var editor = CurrentInputConnection; if (editor == null) return;
             if (operation == 0) { editor.SetComposingText(text, 1); _preeditActive = true; }
             else if (operation == 1) {
-#if TRAINING_BUILD
-                if (Collecting() && !_english && text.Length > 0 && "。．.、，,".Contains(text[^1]))
-                {
-                    var context = text.Length > 1 ? text[..^1] : editor.GetTextBeforeCursor(64, (GetTextFlags)0);
-                    var punctuation = text[^1].ToString();
-                    if(!string.IsNullOrEmpty(context)) _worker?.Post(()=>
-                    {
-                        if(generation != Volatile.Read(ref _generation) || !_preferences!.Current.LearningEnabled) return;
-                        try { _trainingStore!.AppendPunctuation(context, punctuation); }
-                        catch(IOException) { try { _trainingStore?.Stop(); } catch(IOException) { } }
-                    });
-                }
-#endif
                 editor.CommitText(text, 1); _preeditActive = false; }
             else if (operation == 2)
             {
@@ -558,9 +480,6 @@ public sealed class KeyboardService : InputMethodService
                 button.SetTypeface(null, index == view.SelectedIndex ? TypefaceStyle.Bold : TypefaceStyle.Normal);
                 button.Click += (_, _) =>
                 {
-#if TRAINING_BUILD
-                    FinishTrainingQueued();
-#endif
                     _shiftState.Consume(); Status(); Queue(() => _session?.Select(index));
                 };
                 _candidates.AddView(button, new LinearLayout.LayoutParams(-2, Dp(42)));
@@ -655,9 +574,6 @@ public sealed class KeyboardService : InputMethodService
     {
         if (!_clipboardAllowed || _keyRows == null) return;
         CancelTouches();
-#if TRAINING_BUILD
-        _editCapture?.Cancel();
-#endif
         RefreshClipboardSuggestion();
         _clipboardOpen = true; _keyRows.RemoveAllViews(); _letters.Clear(); _shift = null;
         var toolbar = new LinearLayout(this) { BaselineAligned = false };
@@ -695,9 +611,6 @@ public sealed class KeyboardService : InputMethodService
     }
     private void BeginBrackets(string pair)
     {
-#if TRAINING_BUILD
-        FinishTrainingQueued();
-#endif
         if (_restricted) { CurrentInputConnection?.CommitText(pair, 1); MoveCursor(Keycode.DpadLeft); return; }
         Queue(() => _session?.BeginBracketConversion(pair == "「」"));
     }
@@ -718,9 +631,6 @@ public sealed class KeyboardService : InputMethodService
     private void Enter() { if (!SendDefaultEditorAction(true)) CurrentInputConnection?.CommitText("\n", 1); }
     private void HideKeyboard()
     {
-#if TRAINING_BUILD
-        FinishTrainingQueued();
-#endif
         _shiftState.Reset(); Status(); CancelTouches();
         if (!_ready || _restricted) { RequestHideSelf((HideSoftInputFlags)0); return; }
         var generation = Volatile.Read(ref _generation);
@@ -771,14 +681,8 @@ public sealed class KeyboardService : InputMethodService
     }
 
     private void CancelTouches() { foreach (var touch in _touches) touch.Cancel(); _predictionPrefix = ""; }
-    private PersonalRomajiTypos? LoadPersonalTypos()
-    {
-#if TRAINING_BUILD
-        return PersonalRomajiTypos.Load(Path.Combine(FilesDir!.AbsolutePath, "personal-romaji-typos.json"));
-#else
-        return null;
-#endif
-    }
+    private PersonalRomajiTypos? LoadPersonalTypos() =>
+        PersonalRomajiTypos.Load(Path.Combine(FilesDir!.AbsolutePath, "personal-romaji-typos.json"));
     private (View View, KeyTouch Touch)? ResolveLetterTouch(View source, MotionEvent e)
     {
         if (!_adaptiveAllowed || _restricted || _symbols || _numberRows != null || _choosingBrackets ||
@@ -794,20 +698,6 @@ public sealed class KeyboardService : InputMethodService
         var target = _letters.FirstOrDefault(item => item.Letter == letter).Key;
         return target != null && target != source && _letterTouches.TryGetValue(target, out var touch) ? (target, touch) : null;
     }
-#if TRAINING_BUILD
-    private bool Collecting() => _collectAllowed && _trainingStore?.Active == true && _preferences?.Current.LearningEnabled == true;
-    private void FinishTrainingQueued()
-    {
-        if (_editCapture?.Pending != true) return;
-        var generation = Volatile.Read(ref _generation);
-        // Wait for preceding worker output to reach the editor; snapshot precedes the next conversion/commit.
-        Queue(() => _main!.Post(() =>
-        {
-            if (generation != Volatile.Read(ref _generation) || !Collecting()) { _editCapture?.Cancel(); return; }
-            _editCapture?.Finish(CurrentInputConnection?.GetTextBeforeCursor(64, (GetTextFlags)0));
-        }));
-    }
-#endif
 
     private sealed class KeyTouch : Java.Lang.Object, View.IOnTouchListener
     {

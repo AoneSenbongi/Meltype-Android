@@ -43,6 +43,14 @@ class Tests(unittest.TestCase):
         self.assertIn('description.Timestamp', source)
         self.assertIn('PutLong("last-copy"', source)
 
+    def test_release_has_no_typo_acquisition(self):
+        root = Path(__file__).parents[1]
+        for name in ['Meltype.Android/MainActivity.cs','Meltype.Android/KeyboardService.cs']:
+            source = (root/name).read_text(encoding='utf-8')
+            for removed in ['TRAINING_BUILD','TypoTrainingStore','TypoEditCapture','FinishTrainingQueued','Collecting()']:
+                self.assertNotIn(removed, source)
+        self.assertFalse((root/'Meltype.Android.Core/TypoTraining.cs').exists())
+
     def test_insets_not_double_added(self):
         source = (Path(__file__).parents[1] / 'Meltype.Android/KeyboardService.cs').read_text(encoding='utf-8')
         self.assertNotIn('padding + bottom', source)

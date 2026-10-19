@@ -1,4 +1,4 @@
-"""Numeric keyboard regression; settings mutations are restricted to the emulator."""
+"""Numeric layouts, clipboard protection and return-to-text regression."""
 from pathlib import Path
 import os
 import re
@@ -9,7 +9,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--serial', default='emulator-5554')
-parser.add_argument('--numeric-only', action='store_true')
+parser.add_argument('--input-type', type=lambda value:int(value,0))
 options = parser.parse_args()
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -19,7 +19,7 @@ SDK = ROOT / 'android-sdk/platforms/android-36/android.jar'
 FIXTURE = Path(__file__).with_name('number-fixture')
 BUILD = ROOT / 'distribution/panel-number-local/fixture'
 PACKAGE = 'jp.aonesenbongi.meltype.numberfixture'
-IME = 'jp.aonesenbongi.meltype.learning'
+IME = 'jp.aonesenbongi.meltype'
 ADB = ROOT / 'android-sdk/platform-tools/adb.exe'
 ENV = dict(os.environ, JAVA_HOME=str(ROOT / 'jdk'))
 
@@ -109,46 +109,4 @@ def check_layout(input_type, extra, word):
     print('PASS: numeric editor', input_type, extra, 'direct input and return to text')
 
 for args in [(2,'','120'),(0x1002,'-','-12'),(0x2002,'.','12.5'),(0x3002,'-.','-12.5'),(0x12,'','12'),(3,'*#','12#')]:
-    check_layout(*args)
-
-if options.numeric_only:
-    raise SystemExit(0)
-if options.serial != 'emulator-5554':
-    raise SystemExit('Settings mutations are only allowed on the emulator; use --numeric-only.')
-
-# Settings tests are isolated to the emulator.
-adb('shell','am','force-stop',IME)
-adb('shell','am','start','-W','-n',IME+'/jp.aonesenbongi.meltype.MainActivity')
-time.sleep(.7)
-def switch(label):
-    return next(n for n in tree().iter('node') if n.get('class') == 'android.widget.Switch' and n.get('text') == label)
-def tap_node(n):
-    x1,y1,x2,y2=map(int,re.findall(r'\d+',n.get('bounds')))
-    adb('shell','input','tap',str((x1+x2)//2),str((y1+y2)//2))
-    time.sleep(.3)
-def by_text(label): return next(n for n in tree().iter('node') if n.get('text') == label)
-def pref():
-    import json
-    return json.loads(adb('shell','run-as',IME,'cat','files/input-preferences.json'))
-label='変換の学習'
-old=switch(label).get('checked') == 'true'
-tap_node(switch(label)); assert pref()['LearningEnabled'] == (not old)
-adb('shell','am','force-stop',IME)
-adb('shell','am','start','-W','-n',IME+'/jp.aonesenbongi.meltype.MainActivity')
-time.sleep(.4)
-assert (switch(label).get('checked') == 'true') == (not old)
-if switch(label).get('checked') == 'false': tap_node(switch(label))
-collection='編集記録の収集（7日間）'
-assert switch(collection).get('checked') == 'false'
-tap_node(switch(collection)); tap_node(by_text('取消'))
-assert switch(collection).get('checked') == 'false'
-tap_node(switch(collection)); tap_node(by_text('開始'))
-assert switch(collection).get('checked') == 'true'
-tap_node(switch(label))
-assert switch(collection).get('checked') == 'false' and switch(collection).get('enabled') == 'false'
-tap_node(switch(label))
-assert switch(collection).get('checked') == 'false'
-if not old: tap_node(switch(label))
-with (BUILD.parent/'control-panel.png').open('wb') as f:
-    subprocess.run([str(ADB),'-s','emulator-5554','exec-out','screencap','-p'],stdout=f,check=True)
-print('PASS: learning switch persists; collection cancel/start/stop and no automatic restart')
+    if options.input_type is None or args[0] == options.input_type: check_layout(*args)

@@ -18,7 +18,7 @@ SDK = ROOT / 'android-sdk/platforms/android-36/android.jar'
 FIXTURE = Path(__file__).with_name('conversion-fixture')
 BUILD = ROOT / 'distribution/clause-edit-local/fixture'
 PACKAGE = 'jp.aonesenbongi.meltype.conversionfixture'
-IME = 'jp.aonesenbongi.meltype.learning'
+IME = 'jp.aonesenbongi.meltype'
 ADB = ROOT / 'android-sdk/platform-tools/adb.exe'
 ENV = dict(os.environ, JAVA_HOME=str(ROOT / 'jdk'))
 

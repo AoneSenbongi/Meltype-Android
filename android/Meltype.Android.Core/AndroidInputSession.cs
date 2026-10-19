@@ -67,7 +67,7 @@ public sealed class AndroidInputSession : ICompositionHost
         if (learningAllowed && preferences().LearningEnabled) detector.Memory = languages;
         var predictor = new Predictor(new PhraseHistory(StateFile("phrase-history.tsv")), userDictionary?.CompositionDictionary, null);
         _controller = new CompositionController(_gate, detector, converter, this,
-            new CompositionOptions { FullWidthCommaPeriod = true, Comma = () => preferences().Comma[0],
+            new CompositionOptions { ShiftArrowsConvertAutoEnglish = true, FullWidthCommaPeriod = true, Comma = () => preferences().Comma[0],
                 Period = () => preferences().Period[0], LearningEnabled = () => learningAllowed && preferences().LearningEnabled, LiveConversion = () => true,
                 Candidates = BuiltInCandidates.Value,
                 Predictor = predictor, Languages = languages,

@@ -4,7 +4,7 @@ import hashlib, sys
 from pathlib import Path
 helper = Path(__file__).with_name('test_prediction_shift_clipboard.py')
 exec(compile(helper.read_text(encoding='utf-8').split('results = {}')[0],str(helper),'exec'))
-IME='jp.aonesenbongi.meltype.learning'
+IME='jp.aonesenbongi.meltype'
 results={}
 def tap_text(text):
     node=next(n for n in tree().iter('node') if n.get('text')==text)

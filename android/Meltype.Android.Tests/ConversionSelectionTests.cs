@@ -117,6 +117,31 @@ internal static class ConversionSelectionTests
         if (input.View?.Text != "あ") throw new Exception("Resize leaked Shift to following input");
         Console.WriteLine("PASS: live/converting clause shrink/expand, repeated resize, limits, unmodified arrows and scoped Shift");
     }
+    public static void MisclassifiedEnglishTests()
+    {
+        foreach(var word in new[]{"camera","data","open"})
+        {
+            var committed="";
+            var mistaken=new AndroidInputSession(new Plain(),_=>[],(op,text,_)=>{if(op==1)committed+=text;});
+            foreach(var c in word)mistaken.Character(c);
+            if(mistaken.View?.Text!=word)throw new Exception("English detection fixture changed: "+word);
+            mistaken.Key(0x25,shift:true);mistaken.Key(0x27,shift:true);
+            if(mistaken.View is not {Converting:true} corrected || corrected.Text==word || committed!="")
+                throw new Exception("Misclassified English cannot be resized as Japanese: "+word+" text="+mistaken.View?.Text+" converting="+mistaken.View?.Converting+" committed="+committed);
+            if(word=="camera")
+            {
+                var index=mistaken.View.Candidates.ToList().IndexOf("カメラ");
+                if(index<0)throw new Exception("Japanese candidate missing after English resize");
+                mistaken.Select(index);
+                if(committed!="カメラ")throw new Exception("Japanese selection after English resize failed");
+            }
+        }
+        var literal=new AndroidInputSession(new Plain(),_=>[],(_,_,_)=>{});literal.SetEnglish(true);
+        foreach(var c in "camera")literal.Character(c);
+        literal.Key(0x25,shift:true);literal.Key(0x27,shift:true);
+        if(literal.View!=null)throw new Exception("Explicit English mode was converted by resize");
+        Console.WriteLine("PASS: automatic English can resize into Japanese without committing; explicit English remains direct input");
+    }
     sealed class Plain : IKanjiConverter
     {
         public string? Convert(string text)=>text;

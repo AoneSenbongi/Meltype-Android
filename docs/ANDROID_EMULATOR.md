@@ -4,15 +4,16 @@ SDKとエミュレーターはE:/Prog/Meltype/Android/android-sdk、仮想端末
 
 Android 15（API 35）、Google APIsのx86_64イメージとPixel 7の構成でMeltype_API35を作成する。エミュレーターは公式の安定版を使い、ダウンロード時に公式のサイズとSHA-1を照合する。今回のPCはWHPXの利用可能チェックが通過している。
 
-android/tools/Start-AndroidEmulator.cmdをダブルクリックして起動する。PowerShellからはStart-AndroidEmulator.ps1を使える。画面が不要な自動テストでは-Headlessを付ける。ADBの対象はemulator-5554に限定する。学習用APKを入れても、誤字・句読点の収集は開始しない。仮想端末に個人の辞書と履歴をコピーしない。
+`android/tools/Start-AndroidEmulator.ps1 -Headless`で起動する。ADBの対象はemulator-5554に限定する。通常版APKと試験用fixtureを導入し、通常版IMEを選択する。個人の辞書や履歴はコピーしない。1.0.0には誤字収集機能と学習用APKはない。
 
-操作試験はMELTYPE_TEST_SERIAL=emulator-5554を設定してandroid/tools/test_input_actions.pyとtest_long_press_clipboard.pyを実行する。設定しない場合、既存の試験は従来どおりUSBの実機を対象にする。
+## 1.0.0の操作試験
 
-test_number_keyboard.pyは既定でemulator-5554を対象にする。number-fixtureをローカルでビルドして導入し、整数・負数・小数・数値パスワード・電話番号のテンキー、直接入力、削除、次の文字欄への移動と通常配列への復帰を検証する。エミュレーターでは学習用操作盤のスイッチ保存、収集開始の取消・確認、学習停止に伴う収集停止と再開時の状態も確認する。試験用収集は停止し、端末の実データは使用しない。実機で確認する際は利用者の依頼を受け、APKと私有データを退避してから--serialで端末を指定し、--numeric-onlyで収集設定の操作を除外する。画面の証跡はdistribution/panel-number-localへ保存する。
+1. `test_clause_edit.py --serial emulator-5554`でfixtureをビルドし、部分確定後の未確定範囲を確認する。
+2. `test_goji_candidates.py --serial emulator-5554 --output <証跡フォルダー>`で「誤字」「荷台」と英語判定されたcameraの手動文節変更・候補・確定を確認する。
+3. `test_number_keyboard.py --serial emulator-5554`で数字6種類の直接入力・削除・初回コピー候補・履歴・パスワード保護・通常配列への復帰を確認する。
+4. `test_prediction_shift_clipboard.py --serial emulator-5554 --prediction-only --output <証跡フォルダー>`で次文字予測の境界とShift固定を確認する。
 
-起動と操作の結果はdocs/CURRENT_STATE.mdへ記録する。エミュレーターの結果は、手元のスマホでの点滅や初回表示の解消確認と区別する。
-
-test_conversion_context.pyは--serialで端末を明示する。conversion-fixtureの入力欄は学習禁止指定にし、実機の辞書と収集記録を変えずに英字の確定、混在入力、Shift＋Spaceを確認する。実機更新前はAPKと私有データを退避し、試験後はファイルのハッシュと元のIME選択を確認して試験用アプリを削除する。証跡はdistribution/conversion-context-localへ保存する。今回の検証は実機で行い、エミュレーターは終了した状態を保つ。
+起動と操作の結果はローカルのdocs/CURRENT_STATE.mdへ記録する。エミュレーターの結果は、実機の感度や初回表示、アプリごとの挙動の確認とは区別する。以下の旧試験は対象パッケージ等を確認してから使用する。
 
 ## タッチ入力の回帰試験
 

@@ -17,11 +17,7 @@ using System.Text;
 
 namespace Meltype.Mobile;
 
-#if TRAINING_BUILD
-[Activity(Name = "jp.aonesenbongi.meltype.MainActivity", Label = "Meltype 学習用", MainLauncher = true, Exported = true)]
-#else
 [Activity(Name = "jp.aonesenbongi.meltype.MainActivity", Label = "Meltype", MainLauncher = true, Exported = true)]
-#endif
 public sealed class MainActivity : Activity
 {
     private TextView? _setupStatus;
@@ -93,7 +89,6 @@ public sealed class MainActivity : Activity
         var learningStatus = Label("既存の辞書・履歴は保持します。", 12, MobileStyle.Muted); layout.AddView(learningStatus);
         var featureSwitches = new List<(Switch Control, InputFeatureSetting Feature)>();
         var refreshing = false;
-        Action? refreshCollection = null;
         void RefreshPreferences()
         {
             refreshing = true;
@@ -104,7 +99,6 @@ public sealed class MainActivity : Activity
                 period.SetSelection(Array.IndexOf(periods, settings.Period));
                 learning.Checked = settings.LearningEnabled;
                 foreach (var (control, feature) in featureSwitches) control.Checked = feature.Read(settings);
-                refreshCollection?.Invoke();
             }
             finally { refreshing = false; }
         }
@@ -114,67 +108,11 @@ public sealed class MainActivity : Activity
             try
             {
                 preferences.Save(preferences.Current with { LearningEnabled = e.IsChecked });
-#if TRAINING_BUILD
-                if (!e.IsChecked) new TypoTrainingStore(Path.Combine(FilesDir!.AbsolutePath, "typo-training")).Stop();
-#endif
             }
             catch (IOException) { SaveError(); }
             RefreshPreferences();
         };
         _refreshPreferences = RefreshPreferences;
-#if TRAINING_BUILD
-        var store = new TypoTrainingStore(Path.Combine(FilesDir!.AbsolutePath, "typo-training"));
-        var collectionSwitch = new Switch(this) { Text = "編集記録の収集（7日間）", TextSize = 14 };
-        collectionSwitch.SetTextColor(MobileStyle.Ink);
-        layout.AddView(collectionSwitch, new LinearLayout.LayoutParams(-1, Dp(56)));
-        var collection = Label("", 12, MobileStyle.Muted); layout.AddView(collection);
-        void UpdateCollection()
-        {
-            var wasRefreshing = refreshing; refreshing = true;
-            try
-            {
-                collectionSwitch.Enabled = preferences.Current.LearningEnabled;
-                collectionSwitch.Checked = store.Active && collectionSwitch.Enabled;
-                collection.Text = collectionSwitch.Checked
-                    ? $"{store.Count}件 · {store.Until?.ToLocalTime():M月d日 HH:mm}まで"
-                    : $"収集停止中 · {store.Count}件";
-            }
-            finally { refreshing = wasRefreshing; }
-        }
-        refreshCollection = UpdateCollection;
-        collectionSwitch.CheckedChange += (_, e) =>
-        {
-            if (refreshing) return;
-            if (!e.IsChecked)
-            {
-                try { store.Stop(); } catch (IOException) { SaveError(); }
-                UpdateCollection(); return;
-            }
-            // The switch stays off until the user confirms collection.
-            UpdateCollection();
-            if (!preferences.Current.LearningEnabled) return;
-            using var dialog = new AlertDialog.Builder(this);
-            dialog.SetTitle("編集・句読点の履歴を端末内に保存します");
-            dialog.SetMessage("削除前後の文字と、句読点入力直前の最大64文字・入力した句読点を記録します。機密情報を入力する時は停止してください。USBデバッグを許可したPCから取得できます。記録は自動修正に使いません。");
-            dialog.SetPositiveButton("開始", (_, _) =>
-            {
-                try { if (preferences.Current.LearningEnabled) store.Start(); } catch (IOException) { SaveError(); }
-                UpdateCollection();
-            });
-            dialog.SetNegativeButton("取消", (_, _) => UpdateCollection()); dialog.Show();
-        };
-        Add("収集記録を削除", () =>
-        {
-            using var dialog = new AlertDialog.Builder(this);
-            dialog.SetMessage("端末の編集記録を削除して収集を停止します。PCへ取得済みの記録は残ります。");
-            dialog.SetPositiveButton("削除", (_, _) =>
-            {
-                try { store.Clear(); } catch (IOException) { SaveError(); }
-                UpdateCollection();
-            });
-            dialog.SetNegativeButton("取消", (_, _) => { }); dialog.Show();
-        });
-#endif
         layout.AddView(Label("1.3.0の入力機能", 18, MobileStyle.Ink));
         layout.AddView(Label("変更後はキーボードを開き直してください。日英・カナキーの長押しで入力操作、123キーの長押しで追加記号を選べます。予測候補は長押しで学習から削除します。", 12, MobileStyle.Muted));
         string? section = null;
@@ -225,7 +163,7 @@ public sealed class MainActivity : Activity
             dialog.Show();
         });
         var version = PackageManager?.GetPackageInfo(PackageName!, (global::Android.Content.PM.PackageInfoFlags)0)?.VersionName;
-        var about = Label($"Android試作版 {version}\n雪代／Yukishiro氏のMeltypeを基にした非公式Forkです。変換にはOSS版Mozcを使用し、入力は端末内で処理します。", 12, MobileStyle.Muted);
+        var about = Label($"Android {version}\n雪代／Yukishiro氏のMeltypeを基にした非公式Forkです。変換にはOSS版Mozcを使用し、入力は端末内で処理します。", 12, MobileStyle.Muted);
         about.SetPadding(0, Dp(18), 0, 0); layout.AddView(about);
         var page = new ScrollView(this) { FillViewport = true }; page.AddView(layout);
         var frame = new FrameLayout(this); frame.AddView(page, new FrameLayout.LayoutParams(-1, -1));
@@ -322,6 +260,7 @@ public sealed class MainActivity : Activity
             try
             {
                 var converter = MozcJniBridge.Create(this, learning: false);
+                if (!converter.Candidates("ごじ").Contains("誤字")) throw new Exception("Whole-reading homophone candidate missing: 誤字");
                 var preview = "";
                 var session = new AndroidInputSession(converter, converter.Candidates, (operation, text, _) => { if (operation == 0) preview = text; });
                 foreach (var c in "kyouhagoogledekensaku") session.Character(c);
@@ -341,7 +280,7 @@ public sealed class MainActivity : Activity
                         if (editor.Text != output) throw new Exception("Editor composition failed");
                         connection.CommitText(output, 1);
                         if (editor.Text != output) throw new Exception("Editor commit duplicated composition");
-                        File.WriteAllText(path, "PASS: JNI dictionary, mixed live conversion, punctuation, Android editor composition and commit\n" + output);
+                        File.WriteAllText(path, "PASS: JNI dictionary, goji homophones, mixed live conversion, punctuation, Android editor composition and commit\n" + output);
                     }
                     catch (Exception ex) { File.WriteAllText(path, "FAIL: " + ex); }
                 });

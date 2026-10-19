@@ -4,6 +4,7 @@
 Run test_clause_edit.py first to build/install the conversion fixture.
 """
 import argparse
+import sys
 import json
 from pathlib import Path
 import re
@@ -17,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--serial', required=True)
 parser.add_argument('--output', type=Path)
 parser.add_argument('--clipboard-only', action='store_true')
+parser.add_argument('--prediction-only', action='store_true')
 options = parser.parse_args()
 SERIAL = options.serial
 PACKAGE = 'jp.aonesenbongi.meltype.conversionfixture'
@@ -48,11 +50,11 @@ def tap(description):
     time.sleep(.2)
 
 
-def start(personal=False, clipboard=None, sensitive=False, password=False):
+def start(personal=False, clipboard=None, sensitive=False, password=False, selection=1):
     adb('shell', 'am', 'force-stop', PACKAGE)
     command = ['shell', 'am', 'start', '-W', '-n', PACKAGE+'/.ConversionActivity',
                '--ez', 'personal', str(personal).lower(), '--ez', 'sensitive', str(sensitive).lower(),
-               '--ez', 'password', str(password).lower()]
+               '--ez', 'password', str(password).lower(), '--ei', 'select', str(selection)]
     if clipboard is not None:
         command += ['--es', 'clipboard', clipboard]
     adb(*command)
@@ -111,6 +113,10 @@ if not options.clipboard_only:
     OUT.joinpath('shift.png').write_bytes(adb('exec-out', 'screencap', '-p'))
     print('PASS: locked Shift resizes selected clause in both directions without confirmation', flush=True)
 
+if options.prediction_only:
+    OUT.joinpath('verification.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
+    sys.exit(0)
+
 copy_text = 'clipboard-test-20261019'
 start(clipboard=copy_text)
 tap('fixture-copy')
@@ -145,8 +151,8 @@ assert not any(n.get('content-desc') == 'コピーしたテキストを貼り付
 tap('キーボードを閉じる')
 tap('fixture-editor')
 assert not any(n.get('content-desc') == 'コピーしたテキストを貼り付け' for n in tree().iter('node'))
-adb('shell', 'am', 'force-stop', 'jp.aonesenbongi.meltype.learning')
-adb('shell', 'ime', 'set', 'jp.aonesenbongi.meltype.learning/crc64cc9ac1f257f62241.KeyboardService')
+adb('shell', 'am', 'force-stop', 'jp.aonesenbongi.meltype')
+adb('shell', 'ime', 'set', 'jp.aonesenbongi.meltype/crc64cc9ac1f257f62241.KeyboardService')
 start()
 assert not any(n.get('content-desc') == 'コピーしたテキストを貼り付け' for n in tree().iter('node'))
 results['clipboard_paste'] = copy_text

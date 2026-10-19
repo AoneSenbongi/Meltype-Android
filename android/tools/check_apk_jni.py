@@ -1,9 +1,10 @@
 """Check the Release APK's native entry points before distributing it.
 
-This project uses .NET Android's Release marshal methods. A successful build
+Checks explicit marshal or dynamic registration mode. A successful build
 alone does not prove that the generated Java callbacks have native targets.
 Uses only Python's standard library.
 """
+import argparse
 import pathlib
 import struct
 import sys
@@ -31,10 +32,23 @@ def exported_symbols(data):
     return names
 
 
-def check(apk):
+def check(apk, registration="marshal"):
     failures = []
     with zipfile.ZipFile(apk) as archive:
+        if registration == "dynamic":
+            dex = b"".join(archive.read(n) for n in archive.namelist() if n.startswith("classes") and n.endswith(".dex"))
+            required = [b"Lmono/android/Runtime;", b"jp/aonesenbongi/meltype/MainActivity",
+                        b"crc64cc9ac1f257f62241/KeyboardService", b"n_onCreate:(Landroid/os/Bundle;)V",
+                        b"n_onResume:()V", b"n_onCreateInputView:()Landroid/view/View;"]
+            missing = [s.decode() for s in required if s not in dex]
+            if missing: failures.append("DEX registration missing: " + ", ".join(missing))
         for abi in ('arm64-v8a', 'x86_64'):
+            if registration == "dynamic":
+                symbols = exported_symbols(archive.read(f'lib/{abi}/libmonodroid.so'))
+                if 'Java_mono_android_Runtime_register' not in symbols:
+                    failures.append(f'{abi}: missing dynamic registration entry point')
+                else: print(f'PASS: {abi} dynamic JNI registration and DEX callback declarations')
+                continue
             symbols = exported_symbols(archive.read(f'lib/{abi}/libxamarin-app.so'))
             required = (
                 'Java_jp_aonesenbongi_meltype_MainActivity_n_1onCreate',
@@ -52,4 +66,8 @@ def check(apk):
 
 
 if __name__ == '__main__':
-    check(pathlib.Path(sys.argv[1]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--registration', choices=['marshal','dynamic'], default='marshal')
+    parser.add_argument('apk', nargs='+', type=pathlib.Path)
+    args = parser.parse_args()
+    for apk in args.apk: check(apk, args.registration)
