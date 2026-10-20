@@ -1,19 +1,19 @@
-name: 改善の提案
-description: こうなったら使いやすい、という提案
-title: "[提案] "
+name: 改善・機能の要望
+description: キーボードの操作・表示・設定など、改善してほしいことや追加してほしい機能
+title: "[改善要望] "
 labels: ["提案"]
 body:
   - type: markdown
     attributes:
       value: |
-        提案ありがとうございます。今は不具合の修正と判定・変換の精度を優先しているため、すぐには入れられないことがあります。
+        Meltype Androidへの改善要望をお寄せください。操作や表示の小さな改善、新しい機能の要望もこちらで受け付けます。
 
   - type: textarea
     id: problem
     attributes:
       label: 困っていること
       description: どんな場面で、何が不便か
-      placeholder: Discord で絵文字を打つとき、毎回 : を打つのが面倒
+      placeholder: 候補欄の文字が小さく、候補を選びにくい
     validations:
       required: true
 
@@ -21,15 +21,18 @@ body:
     id: idea
     attributes:
       label: こうなってほしい
+      placeholder: 候補欄の文字サイズを設定で変更できるようにしてほしい
     validations:
       required: true
 
-  - type: dropdown
-    id: os
+  - type: input
+    id: environment
     attributes:
-      label: OS
-      multiple: true
-      options:
-        - Windows
-        - Mac
-        - Linux
+      label: 端末・Androidのバージョン（分かれば）
+      placeholder: Pixel 8 / Android 15
+
+  - type: input
+    id: version
+    attributes:
+      label: Meltype Androidのバージョン（分かれば）
+      placeholder: 1.0.0
