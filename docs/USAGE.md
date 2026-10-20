@@ -1,6 +1,6 @@
 # Meltype の使い方
 
-[README](../README.md) の続きです。インストールは README を見てください。
+[README](../README.txt) の続きです。インストールは README を見てください。
 
 ## 動作モード
 
@@ -197,7 +197,7 @@ Win+Space などで韓国語・英語などに切り替えると、Meltype キ�
 
 ## データと辞書
 
-保存場所はすべて `%LOCALAPPDATA%\Meltype\` です。打った内容をネットワークに送ることはありません (通信するのは自動更新の確認だけ。[README](../README.md) の「プライバシー」)。
+保存場所はすべて `%LOCALAPPDATA%\Meltype\` です。打った内容をネットワークに送ることはありません (通信するのは自動更新の確認だけ。[README](../README.txt) の「プライバシー」)。
 
 | ファイル | 内容 |
 | --- | --- |
