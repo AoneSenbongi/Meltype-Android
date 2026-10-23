@@ -53,8 +53,17 @@ class Tests(unittest.TestCase):
 
     def test_insets_not_double_added(self):
         source = (Path(__file__).parents[1] / 'Meltype.Android/KeyboardService.cs').read_text(encoding='utf-8')
-        self.assertNotIn('padding + bottom', source)
-        self.assertIn('Math.Max(padding, bottom)', source)
+        self.assertTrue('Dp(48)' not in source, 'A fixed navigation height leaves an extra gap on separately inset devices')
+        self.assertTrue('WindowInsets.Type.CaptionBar()' in source, 'IME caption buttons must be included')
+        self.assertTrue('KeyboardInsetLayout.BottomPadding(' in source, 'Subtract the space already reserved outside the input view')
+        self.assertTrue('root.LayoutChange +=' in source, 'Recompute after the input view has its final bounds')
+    def test_insets_reapplied_when_keyboard_shown(self):
+        source = (Path(__file__).parents[1] / 'Meltype.Android/KeyboardService.cs').read_text(encoding='utf-8')
+        shown = source.split('public override void OnWindowShown()')[1].split('public override View OnCreateInputView()')[0]
+        self.assertIn('base.OnWindowShown()', shown)
+        self.assertIn('_keyboardInsets?.Apply(root)', shown)
+        self.assertIn('root.LayoutChange += (_, _) => root.Post(', source)
+
     def test_cursor_selection_before_key_fallback(self):
         source = (Path(__file__).parents[1] / 'Meltype.Android/KeyboardService.cs').read_text(encoding='utf-8')
         method = source.split('private void MoveCursor(Keycode code)')[1].split('private void Enter()')[0]

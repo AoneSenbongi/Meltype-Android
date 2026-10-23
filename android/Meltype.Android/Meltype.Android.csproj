@@ -5,8 +5,8 @@
     <OutputType>Exe</OutputType>
     <ApplicationId>jp.aonesenbongi.meltype</ApplicationId>
     <ApplicationTitle>Meltype</ApplicationTitle>
-    <ApplicationVersion>6</ApplicationVersion>
-    <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+    <ApplicationVersion>7</ApplicationVersion>
+    <ApplicationDisplayVersion>1.1.0</ApplicationDisplayVersion>
     <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <AndroidLinkMode>None</AndroidLinkMode>
@@ -21,6 +21,16 @@
     <AndroidJavaSource Include="Java/**/*.java" />
     <AndroidAsset Include="../../LICENSE" Link="LICENSE.txt" />
   </ItemGroup>
+  <ItemGroup Condition="'$(LocalZenzModel)' != ''">
+    <AndroidNativeLibrary Remove="Native/*/libmeltype_zenz.so" />
+    <AndroidNativeLibrary Include="Native/arm64-v8a/libmeltype_zenz.so" Abi="arm64-v8a" />
+    <AndroidNativeLibrary Include="Native/x86_64/libmeltype_zenz.so" Abi="x86_64" />
+    <AndroidAsset Include="$(LocalZenzModel)" Link="zenz/zenz-v3.2-small-Q5_K_M.gguf" />
+    <AndroidAsset Include="../zenz-native/licenses/*.txt" Link="licenses/zenz/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <Target Name="RequireLocalZenz" BeforeTargets="Build" Condition="'$(LocalZenzModel)' != ''">
+    <Error Condition="!Exists('$(LocalZenzModel)') Or !Exists('Native/arm64-v8a/libmeltype_zenz.so') Or !Exists('Native/x86_64/libmeltype_zenz.so')" Text="Build both zenz native libraries and provide the verified local model first. See docs/ANDROID_ZENZ.md." />
+  </Target>
   <Target Name="RequireMozc" BeforeTargets="Build">
     <Error Condition="!Exists('Native/arm64-v8a/libmozc.so') Or !Exists('Native/x86_64/libmozc.so') Or !Exists('Assets/mozc.data')" Text="Build and package the pinned Mozc libraries and OSS dictionary first. See docs/ANDROID_PROTOTYPE.md." />
   </Target>

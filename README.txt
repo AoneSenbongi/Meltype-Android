@@ -1,4 +1,4 @@
-Meltype Android 1.0.0
+Meltype Android 1.1.0
 
 Meltypeを、Androidのキーボードで。
 日英を切り替えずに入力でき、変換の区切りもその場で直せます。
@@ -10,7 +10,7 @@ Meltypeを、Androidのキーボードで。
 
 Android 8.0以降のarm64端末向け。QWERTYのローマ字入力です。
 雪代／Yukishiro氏のMeltype 1.3.0を基に、OSS版MozcとAndroid向けの操作を組み合わせた非公式版です。
-1.0.0は、このAndroid版の初正式リリースです。
+1.1.0は端末内zenzを同梱し、既定OFFで配布します。
 
 ダウンロード
 https://github.com/AoneSenbongi/Meltype-Android/releases
@@ -53,18 +53,31 @@ https://github.com/AoneSenbongi/Meltype-Android/releases
    英語専用入力、右寄せ・左寄せの片手表示、文字キー長押しの数字・記号に対応します。
    自分の単語や定型文を登録し、Simeji JSONとタブ区切りの辞書も取り込めます。
 
+1.1.0の追加機能
+
+・端末内zenzによる誤字の候補評価（既定OFF）
+・文字キーと句読点キーの上フリック
+・文字種5項目だけの上フリックメニュー。取消などの旧操作は削除
+・型番の英数字を保持し、曖昧な末尾は別表記を候補として提案
+・端末の操作領域に合わせた下部余白
+・設定画面からGitHubの最新Releaseを開く更新案内
+
+zenzは設定の「端末内AI／未変換の誤字を見直す」をONにして使います。
+モデルは同梱され、インターネットへ入力を送りません。誤選択や準備・推論の待ち時間があり、長期精度は未確認です。
+型番末尾の別表記は、自動置換せず候補を選んだときに反映します。
+
 本家から引き継いだ機能
 
 ・日英自動判別、共通辞書、文節編集
 ・語句・英単語と社名・サービス名の予測
 ・計算候補、子音の略入力
-・取消、文字種変更、表示どおりの確定
+・文字種変更、表示どおりの確定
 ・空白・括弧・スラッシュ等の表記設定
 ・文脈別の日英学習、ローマ字表示、打鍵間隔表示
 
 これらをAndroidの設定画面とタッチ操作へ接続しています。
 計算や文節編集自体は、本家にもある機能です。
-追加設定22項目の初期値と使い方は、docs/ANDROID_USER_GUIDE.mdを参照してください。
+共通20項目と端末内AIの設定の初期値と使い方は、docs/ANDROID_USER_GUIDE.mdを参照してください。
 
 Android向けに実装・修正した部分
 
@@ -77,7 +90,7 @@ Android向けに実装・修正した部分
 
 使い始める
 
-1. ReleasesからMeltype-Android-1.0.0.apkを取得し、開いてインストールします。
+1. ReleasesからMeltype-Android-1.1.0.apkを取得し、開いてインストールします。
 2. Meltypeアプリの「キーボードを有効にする」で有効にします。
 3. 「キーボードを選ぶ」でMeltypeを選び、試し書き欄で入力します。
 
@@ -90,7 +103,7 @@ Android向けに実装・修正した部分
 ・候補をタップ：選択文節まで確定し、後続は編集を継続
 ・左右矢印：文節を選択。未確定文字がなければ入力先のカーソルを移動
 ・Shiftを2回：固定。固定中の左右矢印で文節の範囲を変更。再度Shiftで解除
-・日英・カナ・自動キーの長押し：日本語変換、取消、文字種変更、部分確定等
+・自動・カナ・日英キーの上フリック：ひらがな・カタカナ・半角カタカナ・全角/半角英数字
 ・123／ABCの長押し：追加記号
 ・削除の長押し：連続削除
 ・▤：クリップボード履歴。×で元の配列へ戻る
@@ -109,21 +122,21 @@ Android向けに実装・修正した部分
 対応範囲
 
 ・Android 8.0以降のarm64。x86_64はエミュレーター検証用
-・フリック・音声入力、クラウド同期、LLMによる自動修正：未対応
+・かな配列のフリック入力・音声入力・クラウド同期：未対応
 ・Gboardの辞書・学習履歴との連携、Androidの再変換UI、GitHubタイトル候補：未対応
 
 全機能・設定・詳しい操作
-   https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.0.0/docs/ANDROID_USER_GUIDE.md
+   https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.1.0/docs/ANDROID_USER_GUIDE.md
 機能の対応一覧
    docs/ANDROID_1_3_0_FEATURES.md
 導入・ビルド・開発者向けの検証
    docs/ANDROID_PROTOTYPE.md
-   docs/ANDROID_RELEASE_1_0_0.md
+   docs/ANDROID_RELEASE_1_1_0.md
 
 検証
 
-最終APKはAndroid 15エミュレーターで起動・変換・文節編集・貼り付けを確認しています。
-Android入力回帰27群、ソース検査9件、本家1.3.0の試験を現在のコアへ接続した511件が通過しています。
+最終署名APKの上書き更新、既定OFF、端末内AIと入力操作の検証範囲はVERIFICATION.jsonに記載します。
+検証結果と最終APKの確認範囲は、配布物のVERIFICATION.jsonに記載します。
 実機での押しやすさ・速度と、各アプリとの互換性は別途確認が必要です。
 検証方法と結果の詳細は配布物のVERIFICATION.jsonを参照してください。
 

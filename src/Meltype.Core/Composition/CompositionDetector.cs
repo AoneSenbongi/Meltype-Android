@@ -377,6 +377,7 @@ public sealed partial class CompositionDetector
             if (!kanaInput && found < 0) found = UserNameEnd(units, i, pending);
             if (!kanaInput && found < 0 && level != DetectionLevel.Manual) found = CapitalizedWordEnd(units, i, pending, final);
             if (!kanaInput && found < 0 && level != DetectionLevel.Manual) found = HyphenatedWordEnd(units, i, pending);
+            if (!kanaInput && found < 0 && level != DetectionLevel.Manual) found = ModelNumberEnd(units, i, pending);
             // 数字を挟んだ英字の略語 (i18n、l10n、h2o)。前後のかなに割らない (issue #434)。
             if (!kanaInput && found < 0 && level != DetectionLevel.Manual) found = NumeronymEnd(units, i, pending);
             // 英語の語 + 数字のすぐ後ろの英単語 (part1026|beta、win11|pro) は、ローマ字として読めても英語 (ベタ にしない)。
@@ -604,6 +605,18 @@ public sealed partial class CompositionDetector
         // english-readable.txt / -pedia (IsEnglishSpan と同じ根拠)。打ち間違い直しが英字の語を崩さないようにする。
         if (lower.Length >= 4 && ReadableEnglish.Value.ContainsWord(lower)) return true;
         return IsPediaEnglishWord(lower);
+    }
+
+    /// <summary>Lexical evidence only. Repeated accidental English choices are not a dictionary.</summary>
+    internal bool IsLexicalEnglishWord(string lower) => _english.Words.ContainsWord(lower) || _proper.Contains(lower) ||
+        ReadableEnglish.Value.ContainsWord(lower) || IsSpellWord(lower) || IsPediaEnglishWord(lower);
+
+    internal bool ContainsLexicalEnglishWord(string lower)
+    {
+        for (var start = 0; start < lower.Length; start++)
+            for (var length = 4; start + length <= lower.Length; length++)
+                if (_english.Words.ContainsWord(lower.Substring(start, length)) || _proper.Contains(lower.Substring(start, length))) return true;
+        return false;
     }
 
     /// <summary>
@@ -1125,6 +1138,54 @@ public sealed partial class CompositionDetector
     }
 
     /// <summary>
+    /// 独立した英字1文字と数字からなる型番 (n78、a1) の終わり。日本語の語尾は切り出さない。
+    /// </summary>
+    private static int ModelNumberEnd(IReadOnlyList<CompositionUnit> units, int start, string pending)
+    {
+        var alternating = AlternatingModelNumberEnd(units, start);
+        if (alternating > start) return alternating;
+        // 日本語の末尾の n を切り出さず、独立した英字1文字から始まる型番だけを扱う。
+        if (start > 0 && units[start - 1].Raw.Any(char.IsAsciiLetterOrDigit)) return -1;
+        if (units[start].Raw is not [var letter] || !char.IsAsciiLetter(letter)) return -1;
+        // 元から英字の子音は既存の判定へ渡し、数字と後続の句読点を英語の区間へ巻き込まない。
+        if (units[start].Kana == units[start].Raw) return -1;
+        var end = start + 1;
+        while (end < units.Count && units[end].Raw is [var digit] && char.IsAsciiDigit(digit)) end++;
+        if (end == start + 1) return -1;
+        // i18n・h2o など数字の後ろが英字1文字だけの形は既存の略語判定へ渡す。
+        if ((end == units.Count && pending.Length == 1 && char.IsAsciiLetter(pending[0])) ||
+            (end == units.Count - 1 && pending.Length == 0 && units[end].Raw is [var tail] && char.IsAsciiLetter(tail))) return -1;
+        return end;
+    }
+
+    /// <summary>短い英字と数字が2組以上交互に続く型番。前後の日本語は含めない。</summary>
+    private static int AlternatingModelNumberEnd(IReadOnlyList<CompositionUnit> units, int start)
+    {
+        var end = start;
+        var groups = 0;
+        while (end < units.Count)
+        {
+            var next = end;
+            var letters = 0;
+            while (next < units.Count && units[next].Raw.Length > 0 && units[next].Raw.All(char.IsAsciiLetter))
+            {
+                letters += units[next++].Raw.Length;
+                if (letters > 2) break;
+            }
+            if (letters is < 1 or > 2 || next >= units.Count || units[next].Raw is not [var digit] || !char.IsAsciiDigit(digit)) break;
+            do { next++; }
+            while (next < units.Count && units[next].Raw is [var d] && char.IsAsciiDigit(d));
+            end = next;
+            groups++;
+        }
+        if (groups < 2) return -1;
+        // s + ni の s は型番、ni は「に」。母音やかなになる複数文字まで取り込まない。
+        while (end < units.Count && units[end].Raw is [var letter] && char.IsAsciiLetter(letter) && units[end].Kana == units[end].Raw) end++;
+        if (!Enumerable.Range(start, end - start).Any(i => units[i].Raw.All(char.IsAsciiLetter) && units[i].Kana == units[i].Raw)) return -1;
+        return end;
+    }
+
+    /// <summary>
     /// 数字を英字が挟む短い略語 (i18n、l10n、h2o、a11y、k8s) の終わり。無ければ -1。
     /// 末尾が数字だけの語 (win11、ps5) は今までの略語判定に任せる。
     /// 日本語の途中の数字 (かいぎは3じ) を略語にしないよう、前後の英字は短く、全体も短いときだけ。
@@ -1139,6 +1200,9 @@ public sealed partial class CompositionDetector
         while (i < units.Count && IsLetter(units[i])) i++;
         var headLen = Raw(units, start, i).Length;
         if (headLen is < 1 or > 2 || i >= units.Count || !IsDigit(units[i])) return -1;
+        // 文中の は3時 (ha3ji) など、かなになる2文字を型番の先頭として切り出さない。
+        if (headLen == 2 && start > 0 && units[start - 1].Raw.Any(char.IsAsciiLetter) &&
+            _romaji.Analyze(Raw(units, start, i)) is { IsValid: true, Partial: "" }) return -1;
         var digitStart = i;
         while (i < units.Count && IsDigit(units[i])) i++;
         var digitLen = Raw(units, digitStart, i).Length;

@@ -10,6 +10,7 @@ using Android.Views.InputMethods;
 using Android.Widget;
 using Keycode = Android.Views.Keycode;
 using Path = System.IO.Path;
+using Resource = Meltype.Android.Resource;
 using Meltype.AndroidCore;
 using Meltype.Composition;
 using Meltype.Config;
@@ -21,6 +22,8 @@ namespace Meltype.Mobile;
 [MetaData("android.view.im", Resource = "@xml/input_method")]
 public sealed class KeyboardService : InputMethodService
 {
+    private View? _inputRoot;
+    private KeyboardInsets? _keyboardInsets;
     private HandlerThread? _thread;
     private Handler? _worker, _main;
     private AndroidInputSession? _session;
@@ -37,6 +40,8 @@ public sealed class KeyboardService : InputMethodService
     private Button? _mode;
     private Button? _shift;
     private Button? _punctuation;
+    private TextView? _punctuationHint;
+    private char _punctuationAlternate = '.';
     private CompositionView? _shownView;
     private readonly KeyboardShift _shiftState = new();
     private Button? _hide, _clipboardButton;
@@ -64,10 +69,16 @@ public sealed class KeyboardService : InputMethodService
     private InputPreferenceStore? _preferences;
     private InputPreferences _activePreferences = new();
     private char _punctuationInput = ',';
+    private NativeZenzEvaluator? _zenz;
+    private bool _zenzPollScheduled;
+    private volatile bool _stopping;
 
     public override void OnCreate()
     {
+        SetTheme(Resource.Style.MeltypeImeTheme);
         base.OnCreate();
+        if (OperatingSystem.IsAndroidVersionAtLeast(29) && Window?.Window is { } imeWindow)
+            imeWindow.NavigationBarContrastEnforced = false;
         _layoutPreferences = GetSharedPreferences("keyboard-layout", FileCreationMode.Private);
         _oneHandMode = _layoutPreferences!.GetInt("one-hand-mode", 0);
         if (_oneHandMode is < 0 or > 2) _oneHandMode = 0;
@@ -75,6 +86,7 @@ public sealed class KeyboardService : InputMethodService
         _main = new Handler(Looper.MainLooper!);
         _thread = new HandlerThread("MeltypeInput"); _thread.Start();
         _worker = new Handler(_thread.Looper!);
+        _zenz = LocalZenz.Create(this);
         _worker.Post(() =>
         {
             try
@@ -91,16 +103,22 @@ public sealed class KeyboardService : InputMethodService
             catch (Exception) { _main.Post(() => Toast.MakeText(this, "変換エンジンを起動できません。入力方法を切り替えてください。", ToastLength.Long)!.Show()); }
         });
     }
+    public override void OnWindowShown()
+    {
+        base.OnWindowShown();
+        if (_inputRoot is { } root)
+            root.Post(() => { root.RequestApplyInsets(); _keyboardInsets?.Apply(root); });
+    }
     public override View OnCreateInputView()
     {
         _letters.Clear();
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetBackgroundColor(MobileStyle.KeyboardBackground);
-        var initialInsets = Window?.Window?.DecorView?.RootWindowInsets;
-        var initialBottom = initialInsets == null ? 0 : OperatingSystem.IsAndroidVersionAtLeast(30) ? initialInsets.GetInsets(WindowInsets.Type.NavigationBars())!.Bottom : initialInsets.SystemWindowInsetBottom;
-        // Android's IME back/switcher bar is 48dp even when gesture insets are only 24dp.
-        root.SetPadding(0, 0, 0, Math.Max(Dp(48), initialBottom));
-        root.SetOnApplyWindowInsetsListener(new KeyboardInsets(Dp(48)));
+        _inputRoot = root;
+        var keyboardInsets = _keyboardInsets = new KeyboardInsets();
+        root.SetOnApplyWindowInsetsListener(keyboardInsets);
+        root.LayoutChange += (_, _) => root.Post(() => keyboardInsets.Apply(root));
+        root.Post(() => { root.RequestApplyInsets(); keyboardInsets.Apply(root); });
         var keyboardArea = new LinearLayout(this) { Orientation = Orientation.Horizontal, BaselineAligned = false };
         _keyboardBody = new LinearLayout(this) { Orientation = Orientation.Vertical };
         _leftHandSpace = new View(this); _rightHandSpace = new View(this);
@@ -207,16 +225,17 @@ public sealed class KeyboardService : InputMethodService
             _english = !_english;
             var english = _english;
             Queue(() => _session?.SetEnglish(english)); Status();
-        }, description: "英語専用モードに切り替える", longAction: ShowInputCommands);
-        _punctuation = AddKey(controls, ",", () => Input(_punctuationInput), longAction: () => Input('.'));
-        _punctuation.ContentDescription = "句読点、文末はピリオド、長押しでピリオド";
+        }, description: "英語専用モードに切り替える", hint: "▴", longAction: ShowCharacterModes, longPressEnabled: false);
+        _punctuation = AddKey(controls, ",", () => Input(_punctuationInput), hint: ".", longAction: () => Input(_punctuationAlternate));
+        _punctuationHint = (TextView)((FrameLayout)_punctuation.Parent!).GetChildAt(1)!;
+        _punctuation.ContentDescription = "句読点、右上の文字は上フリック・長押しで入力";
         AddKey(controls, "空白", InputSpace, 3, description: "空白・変換");
         AddKey(controls, "←", () => Special(0x25), description: "左へ移動");
         AddKey(controls, "→", () => Special(0x27), description: "右へ移動");
         AddKey(controls, "↵", () => Special(0x0D), 2, description: "確定・改行"); _keyRows.AddView(controls);
     }
     private int Dp(int pixels) => MobileStyle.Dp(this, pixels);
-    private Button AddKey(LinearLayout row, string label, Action action, float weight = 1, int height = 54, string? description = null, bool repeat = false, string? hint = null, Action? longAction = null)
+    private Button AddKey(LinearLayout row, string label, Action action, float weight = 1, int height = 54, string? description = null, bool repeat = false, string? hint = null, Action? longAction = null, bool longPressEnabled = true)
     {
         var key = new Button(this) { Text = label, TextSize = label.Length > 1 ? 13 : 20, ContentDescription = description ?? label };
         key.SetSingleLine(true);
@@ -225,7 +244,7 @@ public sealed class KeyboardService : InputMethodService
         {
             var touch = new KeyTouch(_main!, invoke, repeat, _pressOrder, ViewConfiguration.Get(this)!.ScaledTouchSlop,
                 longAction == null ? null : () => { _predictionPrefix = ""; longAction(); _shiftState.Consume(); Status(); },
-                label.Length == 1 && label[0] is >= 'a' and <= 'z' ? ResolveLetterTouch : null);
+                label.Length == 1 && label[0] is >= 'a' and <= 'z' ? ResolveLetterTouch : null, hint == null ? 0 : Dp(24), longPressEnabled);
             _touches.Add(touch); key.SetOnTouchListener(touch);
             if (label.Length == 1 && label[0] is >= 'a' and <= 'z') _letterTouches[key] = touch;
         }
@@ -280,7 +299,9 @@ public sealed class KeyboardService : InputMethodService
             _session = new AndroidInputSession(mozc, mozc.Candidates, Output, () => _activePreferences, allowLearning,
                 new AndroidUserDictionary(Path.Combine(FilesDir!.AbsolutePath, "user-dictionary.json")),
                 personalCandidatesAllowed ? LoadPersonalTypos() : null, clipboard: ReadClipboardCandidate,
-                surrounding: () => (_contextBefore, _contextAfter), stateDirectory: FilesDir!.AbsolutePath);
+                surrounding: () => (_contextBefore, _contextAfter), stateDirectory: FilesDir!.AbsolutePath,
+                contextEvaluator: personalCandidatesAllowed && _activePreferences.LocalZenz ? _zenz : null);
+            if (personalCandidatesAllowed && _activePreferences.LocalZenz) _ = _zenz?.WarmUpAsync();
             _session.SetEnglish(english);
         }); Status();
     }
@@ -401,8 +422,27 @@ public sealed class KeyboardService : InputMethodService
                     }
                     finally { editor.EndBatchEdit(); }
                 });
+                ScheduleZenzPoll();
             }
         });
+    }
+    // Runs only while a review is pending, on the serialized owner worker.
+    private void ScheduleZenzPoll()
+    {
+        if (_stopping || _zenzPollScheduled || _session?.ContextEvaluationPending != true) return;
+        _zenzPollScheduled = true;
+        var generation = Volatile.Read(ref _generation);
+        _worker!.PostDelayed(() =>
+        {
+            _zenzPollScheduled = false;
+            if (_stopping) return;
+            if (generation == Volatile.Read(ref _generation))
+            {
+                _jobGeneration = generation;
+                _session?.PollContextEvaluation(System.Environment.TickCount64);
+            }
+            ScheduleZenzPoll();
+        }, 40);
     }
     private void PostEditorUpdate(Action update)
     {
@@ -501,18 +541,16 @@ public sealed class KeyboardService : InputMethodService
             _candidates.AddView(button, new LinearLayout.LayoutParams(-2, Dp(42)));
         }
     }
-    private void ShowInputCommands()
+    private void ShowCharacterModes()
     {
         if (_mode == null || _restricted) return;
         var popup = new PopupMenu(this, _mode);
-        var commands = new (string Title, int Key)[] { ("日本語に変換", 0x1C), ("取消・一段戻す", 0x1B),
-            ("ひらがな", 0x75), ("カタカナ", 0x76), ("半角カタカナ", 0x77), ("全角英数字", 0x78), ("半角英数字", 0x79),
-            ("選択文節まで確定", 0x0D), ("すべて確定", -1) };
+        var commands = new (string Title, int Key)[] { ("ひらがな", 0x75), ("カタカナ", 0x76), ("半角カタカナ", 0x77), ("全角英数字", 0x78), ("半角英数字", 0x79) };
         for (var i = 0; i < commands.Length; i++) popup.Menu!.Add(0, i, i, commands[i].Title);
         popup.MenuItemClick += (_,e) =>
         {
             var key = commands[e.Item!.ItemId].Key;
-            Queue(() => { if (key == -1) _session?.Commit(); else _session?.Key(key); });
+            Queue(() => _session?.Key(key));
         };
         popup.Show();
     }
@@ -643,12 +681,19 @@ public sealed class KeyboardService : InputMethodService
     private void RefreshPunctuation()
     {
         if (_punctuation == null) return;
-        if (_restricted || _english) { _punctuationInput = ','; _punctuation.Text = ","; return; }
+        if (_restricted || _english)
+        {
+            _punctuationInput = ','; _punctuationAlternate = '.'; _punctuation.Text = ",";
+            if (_punctuationHint != null) _punctuationHint.Text = ".";
+            return;
+        }
         var text = _shownView?.Text;
         if (string.IsNullOrEmpty(text)) text = CurrentInputConnection?.GetTextBeforeCursor(128, (GetTextFlags)0);
         _punctuationInput = AndroidInputSession.PredictPunctuation(text, false);
         var preferences = _preferences!.Current;
         _punctuation.Text = _punctuationInput == '.' ? preferences.Period : preferences.Comma;
+        _punctuationAlternate = _punctuationInput == '.' ? ',' : '.';
+        if (_punctuationHint != null) _punctuationHint.Text = _punctuationInput == '.' ? preferences.Comma : preferences.Period;
     }
     private void Status()
     {
@@ -667,6 +712,7 @@ public sealed class KeyboardService : InputMethodService
             var pending = !_restricted && !_english && !_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text);
             _mode.Text = pending ? (_shownKatakana ? "自動" : "カナ") : _restricted || _english ? "英語" : "自動";
             _mode.ContentDescription = pending ? (_shownKatakana ? "日英自動判別に戻る" : "未確定文字をカタカナにする") : _english ? "日英自動判別に戻る" : "英語専用モードに切り替える";
+            _mode.ContentDescription += "、上フリックで文字種を選ぶ";
             _mode.Enabled = _ready && !_restricted;
         }
         foreach (var (key, letter) in _letters) key.Text = (_shiftState.Active ? char.ToUpperInvariant(letter) : letter).ToString();
@@ -676,6 +722,8 @@ public sealed class KeyboardService : InputMethodService
     }
     public override void OnDestroy()
     {
+        _stopping = true;
+        _zenz?.Dispose();
         CancelTouches();
         Interlocked.Increment(ref _generation); _thread?.QuitSafely(); base.OnDestroy();
     }
@@ -711,14 +759,17 @@ public sealed class KeyboardService : InputMethodService
         private readonly int _slop;
         private View? _view;
         private bool _held;
+        private readonly int _flickThreshold;
+        private float _startX, _startY;
         private readonly Func<View, MotionEvent, (View View, KeyTouch Touch)?>? _resolve;
         private (View View, KeyTouch Touch)? _target;
         public KeyTouch(Handler handler, Action action, bool repeats, KeyPressOrder order, int slop, Action? longAction = null,
-            Func<View, MotionEvent, (View View, KeyTouch Touch)?>? resolve = null)
+            Func<View, MotionEvent, (View View, KeyTouch Touch)?>? resolve = null, int flickThreshold = 0, bool longPressEnabled = true)
         {
             _resolve = resolve;
+            _flickThreshold = flickThreshold;
             _handler = handler; _action = action; _repeats = repeats; _order = order; _slop = slop;
-            if(longAction != null) { _symbolPress = new SymbolPress(action,longAction,order); _longPress = new Java.Lang.Runnable(()=>_symbolPress.Hold()); }
+            if(longAction != null) { _symbolPress = new SymbolPress(action,longAction,order,longPressEnabled); _longPress = new Java.Lang.Runnable(()=>_symbolPress.Hold()); }
             _repeat = new Java.Lang.Runnable(() => { if (!_held) return; _action(); _handler.PostDelayed(_repeat!, 60); });
         }
         public bool OnTouch(View? view, MotionEvent? e)
@@ -745,28 +796,49 @@ public sealed class KeyboardService : InputMethodService
             if (e.ActionMasked == MotionEventActions.Down)
             {
                 Cancel(); _view = view; _held = true; view.Pressed = true;
+                _startX = e.GetX(); _startY = e.GetY();
                 if (_symbolPress != null) { _symbolPress.Down(); _handler.PostDelayed(_longPress!,450); }
                 else { _order.BeforePress(); _action(); }
                 if (_repeats) _handler.PostDelayed(_repeat, 400);
             }
-            else if(e.ActionMasked == MotionEventActions.Up) { _symbolPress?.Up(); Cancel(); }
-            else if (e.ActionMasked == MotionEventActions.Cancel ||
-                e.ActionMasked == MotionEventActions.Move && !KeyTouchBounds.Contains(e.GetX(), e.GetY(), view.Width, view.Height, _slop)) Cancel();
+            else if (e.ActionMasked is MotionEventActions.Move or MotionEventActions.Up)
+            {
+                var upward = _held && _symbolPress?.Move(e.GetX() - _startX, e.GetY() - _startY, _flickThreshold) == true;
+                if (e.ActionMasked == MotionEventActions.Up) { _symbolPress?.Up(); Cancel(); }
+                else if (!upward && !KeyTouchBounds.Contains(e.GetX(), e.GetY(), view.Width, view.Height, _slop)) Cancel();
+            }
+            else if (e.ActionMasked == MotionEventActions.Cancel) Cancel();
             return true;
         }
         public void Cancel() { var target = _target; _target = null; target?.Touch.Cancel(); _symbolPress?.Cancel(); if(_longPress != null) _handler.RemoveCallbacks(_longPress); _held = false; _handler.RemoveCallbacks(_repeat); if (_view != null) _view.Pressed = false; _view = null; }
     }
 
-    private sealed class KeyboardInsets(int padding) : Java.Lang.Object, View.IOnApplyWindowInsetsListener
+    private sealed class KeyboardInsets : Java.Lang.Object, View.IOnApplyWindowInsetsListener
     {
+        private WindowInsets? _latest;
+        private string? _lastMetrics;
         public WindowInsets OnApplyWindowInsets(View? view, WindowInsets? insets)
         {
             if (view == null || insets == null) throw new ArgumentNullException();
-            var bottom = OperatingSystem.IsAndroidVersionAtLeast(30)
-                ? insets.GetInsets(WindowInsets.Type.NavigationBars())!.Bottom
-                : insets.SystemWindowInsetBottom;
-            view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, Math.Max(padding, bottom));
+            _latest = insets;
+            view.Post(() => Apply(view));
             return insets;
+        }
+        public void Apply(View view)
+        {
+            var decor = view.RootView;
+            var insets = decor?.RootWindowInsets ?? _latest;
+            if (decor == null || insets == null || view.Height == 0 || decor.Height == 0) return;
+            var bottom = OperatingSystem.IsAndroidVersionAtLeast(30)
+                ? insets.GetInsets(WindowInsets.Type.NavigationBars() | WindowInsets.Type.CaptionBar())!.Bottom
+                : insets.SystemWindowInsetBottom;
+            var windowAt = new int[2]; var inputAt = new int[2];
+            decor.GetLocationOnScreen(windowAt); view.GetLocationOnScreen(inputAt);
+            var padding = KeyboardInsetLayout.BottomPadding(bottom, windowAt[1] + decor.Height, inputAt[1] + view.Height);
+            var metrics = $"inset={bottom} windowBottom={windowAt[1] + decor.Height} inputBottom={inputAt[1] + view.Height} padding={padding}";
+            if (_lastMetrics != metrics) { _lastMetrics = metrics; global::Android.Util.Log.Info("MeltypeInsets", metrics); }
+            if (view.PaddingBottom != padding)
+                view.SetPadding(view.PaddingLeft, view.PaddingTop, view.PaddingRight, padding);
         }
     }
 }

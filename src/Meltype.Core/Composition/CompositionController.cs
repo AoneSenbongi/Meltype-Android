@@ -104,6 +104,8 @@ public sealed record ReconversionSelection(string Text, string Reading);
 /// <summary>CompositionController の設定と、外の判定器へのつなぎ。</summary>
 public sealed record CompositionOptions
 {
+    public IContextEvaluator? ContextEvaluator { get; init; }
+    public Func<string, bool>? KnownEnglishForTypoReview { get; init; }
     public bool FullWidthCommaPeriod { get; init; }
     public Func<char?> Comma { get; init; } = () => null;
     public Func<char?> Period { get; init; } = () => null;
@@ -299,7 +301,7 @@ public sealed record CompositionOptions
 /// 英数状態でも、打ち始めの数文字でローマ字 (日本語) かを判定し (打鍵は待たせずに送る)、日本語なら送った分を消して日本語入力に戻し、変換ボックスに入れる。
 /// UI スレッドだけで動く。フックからは CaptureGate 経由で入力が順番どおり届く。
 /// </summary>
-public sealed class CompositionController
+public sealed partial class CompositionController
 {
     /// <summary>
     /// ライブ変換は 4 文字以上のかなだけ。短い断片は変換エンジンが的外れな漢字を返しやすい
@@ -384,6 +386,11 @@ public sealed class CompositionController
         _converter = converter;
         _host = host;
         _options = options ?? new CompositionOptions();
+        if (_options.ContextEvaluator is { } evaluator)
+        {
+            _romanEvaluation = new ContextEvaluation(evaluator);
+            _romanCorrector = _options.RomajiTypos ?? RomajiTypoCorrector.Load(detector.Romaji);
+        }
         _text.FullWidthCommaPeriod = _options.FullWidthCommaPeriod;
         _text.CommaOverride = _options.Comma;
         _text.PeriodOverride = _options.Period;
@@ -478,6 +485,8 @@ public sealed class CompositionController
     /// <summary>入力を確定・変換モードへ移行せず、最後の文節の候補を返す。</summary>
     public CompositionView LiveCandidateView(CompositionView view)
     {
+        if (RomanReviewCurrent) return view with { Candidates = _romanCandidates,
+            SelectedIndex = _romanCandidates.ToList().IndexOf(view.Text), Clauses = [view.Text], SelectedClause = 0 };
         if (_converting || _text.IsEmpty || _text.Mode != DisplayMode.Auto) return view;
         if (_options.UserDictionary?.Lookup(_text.Raw.ToLowerInvariant()) is { Count: > 0 } exact)
             return view with { Candidates = Distinct([view.Text, .. exact]), SelectedIndex = 0,
@@ -494,6 +503,7 @@ public sealed class CompositionController
     /// <summary>ライブ候補を選んだときに変換モードへ移り、候補文字列で選ぶ。</summary>
     public bool SelectLiveCandidate(int clauseIndex, string text)
     {
+        if (SelectRomanCandidate(text)) return true;
         if (_converting || _text.IsEmpty) return false;
         if (_options.UserDictionary?.Lookup(_text.Raw.ToLowerInvariant()).Contains(text) == true)
         {
@@ -576,6 +586,7 @@ public sealed class CompositionController
     /// <summary>自動表示が英語で終わるとき、その表示を保持して確定する。Androidの明示的な確定に使う。</summary>
     public bool CommitVisibleEnglish(string suffix = "")
     {
+        if (RomanReviewCurrent) { CommitRomanShown(suffix); return true; }
         if (_converting || _text.IsEmpty || !EndsWithEnglish(final: false)) return false;
         var visible = CurrentDisplay(final: false);
         CommitText(visible + suffix, english: true, _text.Raw);
@@ -649,6 +660,7 @@ public sealed class CompositionController
     //追加処理に伴って、整理のための関数追加
     private void ClearComposition()
     {
+        ResetRomanEvaluation();
         _reconversion = null;
         ++_compositionId;
         _text.Clear();
@@ -661,6 +673,7 @@ public sealed class CompositionController
     /// <summary>フォーカスが変わったときなど。前の入力欄の文脈を持ち越さない。</summary>
     public void ResetContext()
     {
+        ResetRomanEvaluation();
         _lastCommitEnglish = null;
         _lastCommitText = null;
         _caretBefore = null;
@@ -701,6 +714,7 @@ public sealed class CompositionController
             _lastKeyDownTime = e.TimeMs;
         }
         var vk = e.Vk;
+        if (HandlePendingRomanCommit(e)) return;
         if (e.IsUp)
         {
             _swallowedShift.Remove(vk);
@@ -855,6 +869,7 @@ public sealed class CompositionController
                 return;
             case VirtualKeys.Return:
                 if (IsProtectedInput) { CommitProtected(""); return; }
+                if (!_options.EnterCommitsAsShown() && TryCommitRomanTypo("")) return;
                 // 設定「Enter は見えているとおりに確定」: 打ち間違いの直しは Space で変換するときだけ (issue #677)
                 _text.FixTypos(correct: !_options.EnterCommitsAsShown());
                 Commit();
@@ -885,6 +900,7 @@ public sealed class CompositionController
             case VirtualKeys.Space:
                 // 保護区間 (メンション・URL・パス) の末尾は、自動変換せず原文のまま + 半角空白で確定する。
                 if (IsProtectedInput) { CommitProtected(" "); return; }
+                if (TryCommitRomanTypo(" ")) return;
                 if (_text.PrecedingEnglish != true && PreviewCandidates() is not null)
                 {
                     SelectCandidate(0);
@@ -2573,7 +2589,7 @@ public sealed class CompositionController
 
     /// <summary>今の表示 (ライブ変換が有効なら日本語区間は漢字に変換済み)。</summary>
     private string CurrentDisplay(bool final) =>
-        _text.Display(final, _options.LiveConversion() ? LiveConvert : null);
+        RomanReviewCurrent ? _romanResult! : _text.Display(final, _options.LiveConversion() ? LiveConvert : null);
 
     // ---- 確定 ----
 
@@ -2587,6 +2603,7 @@ public sealed class CompositionController
 
     private void Commit(string suffix = "", bool fixEnglish = false, bool preserveText = false)
     {
+        if (RomanReviewCurrent) { CommitRomanShown(suffix); return; }
         if (IsProtectedInput)
         {
             CommitProtected(suffix);
@@ -2897,6 +2914,7 @@ public sealed class CompositionController
     /// <summary>確定して入力する。英語だったか日本語だったか・確定した文字列を、次の入力の文脈として覚えておく。</summary>
     private void CommitText(string text, bool english, string raw = "", bool chosen = false, bool preserveText = false)
     {
+        ResetRomanEvaluation();
         var formatEnglish = _options.AutomaticEnglishSpacing() && _text.Mode == DisplayMode.Auto;
         var spaceIntended = _spaceStartedConversion;
         var afterEnglish = _text.PrecedingEnglish == true;
@@ -3002,6 +3020,7 @@ public sealed class CompositionController
 
     private void UpdateView()
     {
+        if (_romanEvaluation is not null) RequestRomanEvaluation(_text.Display(false, _options.LiveConversion() ? LiveConvert : null));
         if (_text.IsEmpty)
         {
             // 英数状態の判定中は何も表示しない (英語ならそのまま出るだけ)。

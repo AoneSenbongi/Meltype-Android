@@ -22,14 +22,13 @@ public sealed record InputPreferences
     public bool FullWidthSpaceByDefault { get; init; }
     public bool ShiftSpaceHalfWidth { get; init; }
     public bool EnterCommitsAsShown { get; init; } = true;
-    public bool EscStepsBack { get; init; }
-    public bool EscRevertsSelectedClause { get; init; }
     public bool FunctionKeysAffectSelectedClause { get; init; }
     public bool AlphanumericKeyStartsAsTyped { get; init; }
     public bool EnglishFirstInput { get; init; }
     public bool ContextualLearning { get; init; }
     public bool ShowTypedKeys { get; init; }
     public bool LogKeyIntervals { get; init; }
+    public bool LocalZenz { get; init; }
     public InputPreferences Validate() => this with
     {
         Comma = Comma is "、" or "，" or "," ? Comma : "，",
@@ -94,13 +93,12 @@ public static class InputFeatureSettings
         new("FullWidthSpaceByDefault", "記号・空白", "通常の空白を全角にする", p => p.FullWidthSpaceByDefault, (p, value) => p with { FullWidthSpaceByDefault = value }),
         new("ShiftSpaceHalfWidth", "記号・空白", "Shiftと空白で半角スペースを入れる", p => p.ShiftSpaceHalfWidth, (p, value) => p with { ShiftSpaceHalfWidth = value }),
         new("EnterCommitsAsShown", "入力操作", "表示どおりに確定する", p => p.EnterCommitsAsShown, (p, value) => p with { EnterCommitsAsShown = value }),
-        new("EscStepsBack", "入力操作", "取消で漢字・かな・ローマ字の順に戻す", p => p.EscStepsBack, (p, value) => p with { EscStepsBack = value }),
-        new("EscRevertsSelectedClause", "入力操作", "変換中の取消は選択文節だけをかなに戻す", p => p.EscRevertsSelectedClause, (p, value) => p with { EscRevertsSelectedClause = value }),
         new("FunctionKeysAffectSelectedClause", "入力操作", "文字種の変更は選択文節だけに適用する", p => p.FunctionKeysAffectSelectedClause, (p, value) => p with { FunctionKeysAffectSelectedClause = value }),
         new("AlphanumericKeyStartsAsTyped", "入力操作", "英数字の文字種変更は打ったままから始める", p => p.AlphanumericKeyStartsAsTyped, (p, value) => p with { AlphanumericKeyStartsAsTyped = value }),
         new("EnglishFirstInput", "入力操作", "英字を中心に入力する", p => p.EnglishFirstInput, (p, value) => p with { EnglishFirstInput = value }),
         new("ContextualLearning", "学習・表示", "英語・日本語の学習を前の文脈で分ける", p => p.ContextualLearning, (p, value) => p with { ContextualLearning = value }),
         new("ShowTypedKeys", "学習・表示", "入力したローマ字を候補欄に表示する", p => p.ShowTypedKeys, (p, value) => p with { ShowTypedKeys = value }),
         new("LogKeyIntervals", "学習・表示", "打鍵の間隔だけを記録する（実験）", p => p.LogKeyIntervals, (p, value) => p with { LogKeyIntervals = value }),
+        new("LocalZenz", "端末内AI", "未変換の誤字を見直す", p => p.LocalZenz, (p, value) => p with { LocalZenz = value }),
     ];
 }

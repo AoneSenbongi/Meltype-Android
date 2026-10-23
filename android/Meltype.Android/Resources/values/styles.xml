@@ -11,4 +11,8 @@
         <item name="android:windowActionModeOverlay">true</item>
     </style>
     <item name="test_editor" type="id" />
+    <style name="MeltypeImeTheme" parent="android:style/Theme.DeviceDefault.InputMethod">
+        <item name="android:navigationBarColor">#D2D5DB</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
 </resources>

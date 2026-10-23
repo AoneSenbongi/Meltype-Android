@@ -64,6 +64,10 @@ public sealed class LanguageMemory
 
     public int Count => _entries.Count;
 
+    internal bool IsExplicitEnglish(string word) =>
+        (_entries.TryGetValue(word + ContextSuffix, out var entry) || _entries.TryGetValue(word, out entry)) &&
+        entry.English && entry.Explicit;
+
     /// <summary>学習を前の文脈 (英語の後か日本語の後か) ごとに分けるか (設定「英語 / 日本語の学習を前の文脈ごとに分ける」: issue #491)。</summary>
     public bool ContextSensitive { get; set; }
 

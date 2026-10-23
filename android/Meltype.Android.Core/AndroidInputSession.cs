@@ -56,7 +56,8 @@ public sealed class AndroidInputSession : ICompositionHost
     public AndroidInputSession(IKanjiConverter converter, Func<string, IReadOnlyList<string>> candidates,
         Action<int, string, CompositionView?> output, Func<InputPreferences>? preferences = null, bool learningAllowed = true,
         AndroidUserDictionary? userDictionary = null, PersonalRomajiTypos? personalTypos = null,
-        Func<string?>? clipboard = null, Func<(string? Before, string? After)>? surrounding = null, string? stateDirectory = null)
+        Func<string?>? clipboard = null, Func<(string? Before, string? After)>? surrounding = null, string? stateDirectory = null,
+        IContextEvaluator? contextEvaluator = null)
     {
         _output = output;
         preferences ??= () => new InputPreferences();
@@ -67,7 +68,7 @@ public sealed class AndroidInputSession : ICompositionHost
         if (learningAllowed && preferences().LearningEnabled) detector.Memory = languages;
         var predictor = new Predictor(new PhraseHistory(StateFile("phrase-history.tsv")), userDictionary?.CompositionDictionary, null);
         _controller = new CompositionController(_gate, detector, converter, this,
-            new CompositionOptions { ShiftArrowsConvertAutoEnglish = true, FullWidthCommaPeriod = true, Comma = () => preferences().Comma[0],
+            new CompositionOptions { ContextEvaluator = contextEvaluator, ShiftArrowsConvertAutoEnglish = true, FullWidthCommaPeriod = true, Comma = () => preferences().Comma[0],
                 Period = () => preferences().Period[0], LearningEnabled = () => learningAllowed && preferences().LearningEnabled, LiveConversion = () => true,
                 Candidates = BuiltInCandidates.Value,
                 Predictor = predictor, Languages = languages,
@@ -84,8 +85,6 @@ public sealed class AndroidInputSession : ICompositionHost
                 FullWidthSlash = () => preferences().FullWidthSlash,
                 LaughterAfterKana = () => preferences().LaughterAfterKana,
                 EnterCommitsAsShown = () => preferences().EnterCommitsAsShown,
-                EscStepsBack = () => preferences().EscStepsBack,
-                EscRevertsSelectedClause = () => preferences().EscRevertsSelectedClause,
                 FunctionKeysAffectSelectedClause = () => preferences().FunctionKeysAffectSelectedClause,
                 AlphanumericKeyStartsAsTyped = () => preferences().AlphanumericKeyStartsAsTyped,
                 EnglishFirstInput = () => preferences().EnglishFirstInput,
@@ -146,6 +145,8 @@ public sealed class AndroidInputSession : ICompositionHost
 
     public void Key(int code, char? character = null, bool shift = false)
     {
+        if (!_english && !ChoosingBrackets && (code == 0x20 || code == 0x0D && !_preferences().EnterCommitsAsShown) &&
+            _controller.TryCommitRomanTypo(code == 0x20 ? " " : "")) return;
         if (!_english && code == 0x20 && !_controller.HasDirectReadingCandidates && _controller.CommitVisibleEnglish(" ")) return;
         if (!_english && code == 0x0D && _preferences().EnterCommitsAsShown && _controller.CommitVisibleEnglish()) return;
         if (ChoosingBrackets)
@@ -181,6 +182,8 @@ public sealed class AndroidInputSession : ICompositionHost
     }
 
     private long NextTime() => _time = Math.Max(_time + 1, Environment.TickCount64);
+    public void PollContextEvaluation(long now) => _controller.PollContextEvaluation(now);
+    public bool ContextEvaluationPending => _controller.ContextEvaluationPending;
 
     private void PumpKey(int code, bool up)
     {

@@ -12,11 +12,18 @@ public static class KeyTouchBounds
     public static bool Contains(float x, float y, int width, int height, int slop) =>
         x >= -slop && x < width + slop && y >= -slop && y < height + slop;
 }
-public sealed class SymbolPress(Action tap, Action hold, KeyPressOrder? order = null)
+public sealed class SymbolPress(Action tap, Action hold, KeyPressOrder? order = null, bool longPressEnabled = true)
 {
     private bool _down, _fired;
     public void Down() { order?.BeforePress(); _down = true; _fired = false; order?.Track(this); }
-    public void Hold() { if (_down && !_fired) { _fired = true; hold(); } }
+    private void Activate() { if (_down && !_fired) { _fired = true; hold(); } }
+    public void Hold() { if (longPressEnabled) Activate(); }
+    public bool Move(float dx, float dy, float threshold)
+    {
+        if (!_down || threshold <= 0 || dy >= 0 || -dy <= Math.Abs(dx)) return false;
+        if (-dy >= threshold) Activate();
+        return true;
+    }
     public void Up() { var fire = _down && !_fired; Cancel(); if (fire) tap(); }
     public void Cancel() { _down = false; _fired = false; order?.Release(this); }
 }

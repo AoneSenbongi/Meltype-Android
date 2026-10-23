@@ -53,6 +53,7 @@ public sealed class MainActivity : Activity
         var setup = new LinearLayout(this) { BaselineAligned = false }; layout.AddView(setup);
         Add("有効にする", () => StartActivity(new Intent(Settings.ActionInputMethodSettings)), setup);
         Add("キーボードを選ぶ", () => ((InputMethodManager)GetSystemService(InputMethodService)!).ShowInputMethodPicker(), setup);
+        Add("アプリを更新", ShowUpdate);
         Add("単語登録・辞書の取り込み", ShowDictionary);
         _dictionaryStatus = Label("", 12, MobileStyle.Muted);
         _dictionaryStatus.SetPadding(0, Dp(4), 0, Dp(12)); layout.AddView(_dictionaryStatus); RefreshDictionary();
@@ -114,7 +115,7 @@ public sealed class MainActivity : Activity
         };
         _refreshPreferences = RefreshPreferences;
         layout.AddView(Label("1.3.0の入力機能", 18, MobileStyle.Ink));
-        layout.AddView(Label("変更後はキーボードを開き直してください。日英・カナキーの長押しで入力操作、123キーの長押しで追加記号を選べます。予測候補は長押しで学習から削除します。", 12, MobileStyle.Muted));
+        layout.AddView(Label("変更後はキーボードを開き直してください。自動・カナキーの上フリックで文字種、123キーの長押しで追加記号を選べます。予測候補は長押しで学習から削除します。", 12, MobileStyle.Muted));
         string? section = null;
         foreach (var feature in InputFeatureSettings.All)
         {
@@ -124,6 +125,11 @@ public sealed class MainActivity : Activity
                 var heading = Label(section, 15, MobileStyle.Ink); heading.SetPadding(0, Dp(16), 0, Dp(4)); layout.AddView(heading);
             }
             var control = new Switch(this) { Text = feature.Title, TextSize = 14, ContentDescription = "設定 " + feature.Key };
+            if (feature.Key == "LocalZenz" && !LocalZenz.Available(this))
+            {
+                control.Enabled = false;
+                control.Text += "（モデル未導入）";
+            }
             control.SetTextColor(MobileStyle.Ink);
             featureSwitches.Add((control, feature));
             layout.AddView(control, new LinearLayout.LayoutParams(-1, -2) { TopMargin = Dp(6), BottomMargin = Dp(6) });
@@ -171,7 +177,30 @@ public sealed class MainActivity : Activity
         editor.FocusChange += (_, e) => { if (e.HasFocus) page.PostDelayed(ScrollEditor, 200); };
         frame.SetOnApplyWindowInsetsListener(new SetupInsets(Dp(12), ScrollEditor));
         SetContentView(frame); frame.RequestApplyInsets();
-        if (Intent?.GetBooleanExtra("selftest", false) == true) RunSelfTest(editor);
+        if (Intent?.GetBooleanExtra("zenzselftest", false) == true) ZenzDeviceSelfTest.Start(this);
+        else if (Intent?.GetBooleanExtra("selftest", false) == true) RunSelfTest(editor);
+    }
+    private void ShowUpdate()
+    {
+        const string url = "https://github.com/AoneSenbongi/Meltype-Android/releases/latest";
+        var version = PackageManager?.GetPackageInfo(PackageName!, (global::Android.Content.PM.PackageInfoFlags)0)?.VersionName ?? "不明";
+        using var dialog = new AlertDialog.Builder(this);
+        dialog.SetTitle("アプリを更新");
+        dialog.SetMessage($"現在のバージョン：{version}\n\n最新の正式配布ページで、現在より新しい版のAPKをダウンロードし、開いて「更新」を押してください。初回はブラウザーからのインストール許可が必要な場合があります。\n\n更新できない場合はアンインストールせず、配布ページの移行案内を確認してください。アンインストールすると辞書・学習データが消えます。");
+        dialog.SetPositiveButton("配布ページを開く", (_, _) =>
+        {
+            try { StartActivity(new Intent(Intent.ActionView, global::Android.Net.Uri.Parse(url))); }
+            catch (ActivityNotFoundException)
+            {
+                using var unavailable = new AlertDialog.Builder(this);
+                unavailable.SetTitle("ブラウザーで開いてください");
+                unavailable.SetMessage(url);
+                unavailable.SetPositiveButton("閉じる", (_, _) => { });
+                unavailable.Show();
+            }
+        });
+        dialog.SetNegativeButton("閉じる", (_, _) => { });
+        dialog.Show();
     }
     private sealed class SetupInsets(int gap, Action scroll) : Java.Lang.Object, View.IOnApplyWindowInsetsListener
     {

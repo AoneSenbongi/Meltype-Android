@@ -15,7 +15,13 @@ internal static class Feature130Tests
     static void Type(AndroidInputSession s, string raw) { foreach (var c in raw) s.Character(c); }
     public static void Run()
     {
+        Require(!InputFeatureSettings.All.Any(f => f.Key.StartsWith("Esc")), "Removed cancel settings remain visible");
+        var legacy = System.Text.Json.JsonSerializer.Deserialize<InputPreferences>("{\"EscStepsBack\":true,\"EscRevertsSelectedClause\":true,\"LearningEnabled\":false,\"ShowTypedKeys\":true}")!;
+        Require(!legacy.LearningEnabled && legacy.ShowTypedKeys, "Old cancel fields broke remaining settings");
+        Require(!System.Text.Json.JsonSerializer.Serialize(legacy).Contains("Esc"), "Removed cancel fields remain serialized");
         var defaults = new InputPreferences();
+        Require(!defaults.LocalZenz, "zenz must be OFF by default");
+        Require(!System.Text.Json.JsonSerializer.Deserialize<InputPreferences>("{}")!.LocalZenz, "Existing settings without zenz must remain OFF");
         foreach (var feature in InputFeatureSettings.All)
         {
             var changed = feature.Write(defaults, !feature.Read(defaults));
@@ -42,8 +48,8 @@ internal static class Feature130Tests
         Type(names,"shaomi");names.SelectPrediction(names.View!.Predictions!.ToList().IndexOf("Xiaomi"));
         Require(predicted=="Xiaomi","Prediction click changed text");
         var literal=Session(new(){EnglishFirstInput=true});Type(literal,"nihongo");
-        Require(literal.View?.Text=="nihongo","English-first input did not remain literal");literal.Key(0x1C);
-        Require(literal.View?.Text!="nihongo","English-first conversion command did not switch to Japanese");
+        Require(literal.View?.Text=="nihongo","English-first input did not remain literal");literal.Key(0x75);
+        Require(literal.View?.Text!="nihongo","English-first hiragana mode did not switch to Japanese");
         var normal=Session(new(){ShowCandidatesWhileTyping=false});Type(normal,"nihongo");
         Require(normal.View?.Candidates.Count==0,"Candidate-display switch was ignored");
         var keys=Session(new(){ShowTypedKeys=true});Type(keys,"nihongo");Require(keys.View?.Typed=="nihongo","Typed-key display switch was ignored");

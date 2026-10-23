@@ -1,0 +1,11 @@
+Model: Miwa-Keita/zenz-v3.2-small-gguf, Q5_K_M
+Source: https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf
+Revision: c67e03e07d215c869f591b274c1631170d3e11fe
+SHA256: 29C223D4C23327B80FD13EBB5AB2555057A46317997D5DA391584FFBEF0DB673
+License: Apache-2.0, see ZENZ-APACHE-2.0.txt.
+
+Runtime: azooKey/llama.cpp, b4846
+Source: https://github.com/azooKey/llama.cpp
+Revision: 10131b23ee0dbd9d03dfc618cec9fe3402919277
+License: MIT, see LLAMA-MIT.txt.
+Built from source for Android CPU. This is an unofficial Meltype integration.

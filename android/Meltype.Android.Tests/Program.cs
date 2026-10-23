@@ -2,6 +2,17 @@
 using Meltype.AndroidCore;
 using Meltype.Composition;
 
+if (args is ["--zenz-boundary-local", var endpoint])
+{
+    ModelBoundaryTests.RunLocalModel(endpoint);
+    return;
+}
+
+if (args is ["--zenz-model", var zenzModel, var zenzRuntime])
+{
+    AndroidZenzTests.RunNative(zenzModel, zenzRuntime);
+    return;
+}
 if (args is ["--import-dictionary", var source, var target])
 {
     var store = new AndroidUserDictionary(target);
@@ -19,7 +30,10 @@ if (args is ["--audit-personal-typos", var model, var analysis, var report])
 if (typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.TypoTrainingStore") != null ||
     typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.TypoEditCapture") != null)
     throw new Exception("Release contains typo-acquisition capability");
+ModelNumberTests.Run();
+ModelBoundaryTests.Run();
 MozcCandidateTests.Run();
+AndroidZenzTests.Run();
 Feature130Tests.Run();
 AdaptiveInputTests.Run();
 PersonalRomajiTests.Run();
