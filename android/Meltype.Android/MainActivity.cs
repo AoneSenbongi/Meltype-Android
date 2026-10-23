@@ -179,7 +179,10 @@ public sealed class MainActivity : Activity
         {
             if (refreshingLayout) return;
             var godan = layoutSpinner.SelectedItemPosition == 1;
-            var editor = _layoutPreferences!.Edit()!;
+            // Spinner は起動直後の初期選択を、レイアウトのあとで ItemSelected として知らせる。
+            // 保存した選択と同じなら利用者の操作ではないので、今の配列 (layout-mode) を書き換えず通知もしない。
+            if (_layoutPreferences!.GetBoolean("godan-enabled", false) == godan) return;
+            var editor = _layoutPreferences.Edit()!;
             editor.PutBoolean("godan-enabled", godan);
             editor.PutInt("layout-mode", godan ? GodanLayout : QwertyLayout);
             editor.Apply();

@@ -448,9 +448,9 @@ public sealed class KeyboardService : InputMethodService
         }
         if (!_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text))
         {
-            var text = _shownView!.Text;
-            var kana = text.Any(c => c is >= 'ぁ' and <= 'ゖ' or 'ー' or >= 'ァ' and <= 'ヶ');
-            Queue(() => _session?.Key(kana ? 0x79 : 0x75)); // F10 = 英字、F6 = ひらがな
+            // 変換中は未確定の表示が漢字だけになる (nihongo → 日本語)。漢字も日本語として数え、1 回で英字へ向ける。
+            var toAlphabet = KanaAlphabetSwitch.ToAlphabet(_shownView!.Text);
+            Queue(() => _session?.Key(toAlphabet ? 0x79 : 0x75)); // F10 = 英字、F6 = ひらがな
             Status();
             return;
         }

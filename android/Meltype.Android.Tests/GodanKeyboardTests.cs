@@ -94,5 +94,26 @@ internal static class GodanKeyboardTests
                 throw new Exception($"GODAN description is missing {part}: {description}");
 
         Console.WriteLine("PASS: GODAN 3x5 layout, tap/flick table, vowel flicks, number row, punctuation and descriptions");
+
+        // 「かな/A」: ライブ変換の未確定は漢字だけになる (nihongo → 日本語) ので、漢字も日本語として英字へ向ける。
+        foreach (var japanese in new[] { "にほんご", "日本語", "カタカナ", "ｶﾀｶﾅ", "今日は日本語", "ー", "々" })
+            if (!KanaAlphabetSwitch.ToAlphabet(japanese))
+                throw new Exception($"かな/A must send Japanese preedit to the alphabet: {japanese}");
+        foreach (var latin in new[] { "nihongo", "abc", "123", "", "日本語abc" })
+        {
+            var wantJapanese = latin == "日本語abc";
+            if (KanaAlphabetSwitch.ToAlphabet(latin) != wantJapanese)
+                throw new Exception($"かな/A misclassified the preedit: {latin}");
+        }
+        if (KanaAlphabetSwitch.ToAlphabet(null)) throw new Exception("かな/A must ignore the empty preedit.");
+
+        // 1 回のタップで英字になること (F10 を 2 回押させない)。
+        var kanaSession = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+        foreach (var c in "nihongo") kanaSession.Character(c);
+        if (kanaSession.View?.Text != "日本語") throw new Exception("かな/A test precondition is broken: " + kanaSession.View?.Text);
+        kanaSession.Key(0x79); // F10 = 英字
+        if (kanaSession.View?.Text != "nihongo")
+            throw new Exception("かな/A must switch a kanji preedit to the alphabet in one tap: " + kanaSession.View?.Text);
+        Console.WriteLine("PASS: GODAN かな/A switches 日本語 to nihongo in one tap");
     }
 }
