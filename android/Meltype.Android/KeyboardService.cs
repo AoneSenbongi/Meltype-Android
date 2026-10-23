@@ -260,7 +260,7 @@ public sealed class KeyboardService : InputMethodService
         AddSideKey(left, "戻す", Undo, description: "元に戻す（未確定は取消、確定後は Ctrl+Z）");
         AddSideKey(left, "←", () => Special(0x25), description: "左へ移動");
         AddSideKey(left, "記号", () => { _symbols = true; BuildKeyRows(); Status(); }, description: "数字・記号と英字配列を切り替える", longAction: ShowExtraSymbols);
-        _mode = AddSideKey(left, "かな/A", ToggleKanaAlphabet, description: "かな/A（タップでかな/アルファベットを切り替える）", longAction: ShowInputCommands);
+        _mode = AddSideKey(left, "かな/A", ToggleKanaAlphabet, description: "かな/A（タップでかな/アルファベットを切り替える）", longAction: ShowCharacterModes);
         AddSideKey(left, "QWERTY", () => SetLayout(QwertyLayout), description: "QWERTY配列に切り替える");
 
         foreach (var row in GodanKeyboard.Rows)
