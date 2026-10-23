@@ -24,6 +24,10 @@ public sealed class AndroidInputSession : ICompositionHost
         ["です", "ます", "でした", "ました", "ません", "ない", "なかった", "だった", "である", "だ", "と思う", "と思います"];
     public CompositionView? View { get; private set; }
     public bool Katakana { get; private set; }
+    public bool ApplyDakuten(bool handakuten) => _controller.ApplyDakuten(handakuten);
+    public bool ToggleSmallLast() => _controller.ToggleSmallLast();
+    public bool CycleKanaVariant() => _controller.CycleKanaVariant();
+
     public void ToggleKana()
     {
         if (_english || ChoosingBrackets || string.IsNullOrEmpty(View?.Text)) return;
@@ -105,6 +109,7 @@ public sealed class AndroidInputSession : ICompositionHost
         if (_english == english) return;
         Commit();
         _english = english;
+        if (!english) _controller.RestoreAutomaticMode();
     }
 
     public void Character(char character)
@@ -227,6 +232,8 @@ public sealed class AndroidInputSession : ICompositionHost
     public void Commit() { if (ChoosingBrackets) CommitBracket(); else if (!_controller.CommitVisibleEnglish()) _controller.CommitPending(); }
     public void Reset() { _controller.Reset(); _controller.ResetContext(); _gate.Abort(); _brackets = null; Katakana = false; View = null; }
     public void CommitText(string text) => _output(1, text, null);
+    /// <summary>未確定の入力を確定してから、そのままの文字列を入れる (GODAN の「」など)。</summary>
+    public void InsertLiteral(string text) { Commit(); CommitText(text); }
     public void Show(CompositionView view)
     {
         View = view.Converting || !_preferences().ShowCandidatesWhileTyping ? view : _controller.LiveCandidateView(view);

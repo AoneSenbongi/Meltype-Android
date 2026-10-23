@@ -23,6 +23,10 @@ public sealed class MainActivity : Activity
     private TextView? _setupStatus;
     private Action? _refreshPreferences;
     private TextView? _dictionaryStatus;
+    private ISharedPreferences? _layoutPreferences;
+    private Action? _refreshLayout;
+    private ISharedPreferencesOnSharedPreferenceChangeListener? _layoutListener;
+    private const int QwertyLayout = 0, GodanLayout = 1;
     private string DictionaryPath => Path.Combine(FilesDir!.AbsolutePath, "user-dictionary.json");
     private int Dp(float value) => MobileStyle.Dp(this, value);
     protected override void OnCreate(Bundle? savedInstanceState)
@@ -32,7 +36,7 @@ public sealed class MainActivity : Activity
         if (OperatingSystem.IsAndroidVersionAtLeast(30) && !OperatingSystem.IsAndroidVersionAtLeast(35)) Window.SetDecorFitsSystemWindows(false);
         var layout = new LinearLayout(this) { Orientation = Orientation.Vertical };
         layout.SetPadding(Dp(20), Dp(16), Dp(20), Dp(20));
-        layout.SetBackgroundColor(Color.White);
+        layout.SetBackgroundColor(MobileStyle.PageBackground);
         var header = new LinearLayout(this); header.SetGravity(GravityFlags.CenterVertical);
         var mark = new ImageView(this); mark.SetImageResource(Resource.Drawable.ic_meltype_mark);
         mark.ContentDescription = "Meltypeのアイコン";
@@ -40,6 +44,8 @@ public sealed class MainActivity : Activity
         header.AddView(Label("Meltype · Android", 22, MobileStyle.Ink)); layout.AddView(header);
         _setupStatus = Label("設定を確認しています…", 13, MobileStyle.Muted);
         _setupStatus.SetPadding(0, Dp(12), 0, Dp(12)); layout.AddView(_setupStatus);
+        var basicHeading = Label("基本設定", 18, MobileStyle.Ink);
+        basicHeading.SetPadding(0, Dp(8), 0, Dp(4)); layout.AddView(basicHeading);
         Button Add(string text, Action action, LinearLayout? parent = null)
         {
             var button = new Button(this) { Text = text, TextSize = 14 };
@@ -57,6 +63,7 @@ public sealed class MainActivity : Activity
         Add("単語登録・辞書の取り込み", ShowDictionary);
         _dictionaryStatus = Label("", 12, MobileStyle.Muted);
         _dictionaryStatus.SetPadding(0, Dp(4), 0, Dp(12)); layout.AddView(_dictionaryStatus); RefreshDictionary();
+
         var preferences = new InputPreferenceStore(Path.Combine(FilesDir!.AbsolutePath, "input-preferences.json"));
         var punctuation = new LinearLayout(this) { BaselineAligned = false };
         layout.AddView(punctuation);
@@ -149,6 +156,44 @@ public sealed class MainActivity : Activity
             dialog.SetMessage(text.Length > 0 ? text : "記録はありません。実験設定をONにした入力欄だけで、文字を含めず間隔を記録します。機密欄と学習禁止欄では記録しません。");
             dialog.SetPositiveButton("閉じる", (_,_) => {}); dialog.Show();
         });
+        var keyboardHeading = Label("キーボード", 18, MobileStyle.Ink);
+        keyboardHeading.SetPadding(0, Dp(24), 0, Dp(4)); layout.AddView(keyboardHeading);
+        // キーボード配列 (QWERTY / GODAN)。キーボード左下の QWERTY / 五段 と同じ設定を保存する。
+        _layoutPreferences = GetSharedPreferences("keyboard-layout", FileCreationMode.Private);
+        var layoutHeading = Label("キーボード配列", 15, MobileStyle.Ink);
+        layoutHeading.SetPadding(0, Dp(8), 0, Dp(4)); layout.AddView(layoutHeading);
+        var layoutSpinner = new Spinner(this);
+        var layoutAdapter = new ArrayAdapter<string>(this, global::Android.Resource.Layout.SimpleSpinnerItem,
+            new[] { "QWERTY", "GODAN" });
+        layoutAdapter.SetDropDownViewResource(global::Android.Resource.Layout.SimpleSpinnerDropDownItem);
+        layoutSpinner.Adapter = layoutAdapter;
+        layout.AddView(layoutSpinner, new LinearLayout.LayoutParams(-1, Dp(48)));
+        var refreshingLayout = false;
+        void RefreshLayout()
+        {
+            refreshingLayout = true;
+            try { layoutSpinner.SetSelection(_layoutPreferences!.GetBoolean("godan-enabled", false) ? 1 : 0); }
+            finally { refreshingLayout = false; }
+        }
+        layoutSpinner.ItemSelected += (_, _) =>
+        {
+            if (refreshingLayout) return;
+            var godan = layoutSpinner.SelectedItemPosition == 1;
+            // Spinner は起動直後の初期選択を、レイアウトのあとで ItemSelected として知らせる。
+            // 保存した選択と同じなら利用者の操作ではないので、今の配列 (layout-mode) を書き換えず通知もしない。
+            if (_layoutPreferences!.GetBoolean("godan-enabled", false) == godan) return;
+            var editor = _layoutPreferences.Edit()!;
+            editor.PutBoolean("godan-enabled", godan);
+            editor.PutInt("layout-mode", godan ? GodanLayout : QwertyLayout);
+            editor.Apply();
+            Toast.MakeText(this, godan ? "GODANとQWERTYに切り替えました。" : "QWERTYのみに切り替えました。", ToastLength.Short)!.Show();
+        };
+        RefreshLayout();
+        _refreshLayout = RefreshLayout;
+        _layoutListener = new LayoutSettingListener(() => RunOnUiThread(() => _refreshLayout?.Invoke()));
+        _layoutPreferences!.RegisterOnSharedPreferenceChangeListener(_layoutListener);
+
+
         RefreshPreferences();
         var trial = Label("試し書き", 16, MobileStyle.Ink); trial.SetPadding(0, Dp(24), 0, Dp(8)); layout.AddView(trial);
         var editor = new EditText(this) { Id = Resource.Id.test_editor, Hint = "kyouhagoogledekensaku", TextSize = 17, InputType = InputTypes.ClassText | InputTypes.TextFlagMultiLine, Gravity = GravityFlags.Top };
@@ -268,10 +313,28 @@ public sealed class MainActivity : Activity
     {
         var label = new TextView(this) { Text = text, TextSize = size }; label.SetTextColor(color); return label;
     }
+    protected override void OnDestroy()
+    {
+        if (_layoutListener != null) _layoutPreferences?.UnregisterOnSharedPreferenceChangeListener(_layoutListener);
+        _layoutListener = null;
+        base.OnDestroy();
+    }
+
+    private sealed class LayoutSettingListener : Java.Lang.Object, ISharedPreferencesOnSharedPreferenceChangeListener
+    {
+        private readonly Action _refresh;
+        public LayoutSettingListener(Action refresh) => _refresh = refresh;
+        public void OnSharedPreferenceChanged(ISharedPreferences? sharedPreferences, string? key)
+        {
+            if (key is "layout-mode" or "godan-enabled") _refresh();
+        }
+    }
+
     protected override void OnResume()
     {
         base.OnResume();
         _refreshPreferences?.Invoke();
+        _refreshLayout?.Invoke();
         var manager = (InputMethodManager)GetSystemService(InputMethodService)!;
         var enabled = manager.EnabledInputMethodList?.Any(method => method.PackageName == PackageName) == true;
         var selected = Settings.Secure.GetString(ContentResolver, Settings.Secure.DefaultInputMethod)?.StartsWith(PackageName + "/", StringComparison.Ordinal) == true;

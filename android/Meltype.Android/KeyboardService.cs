@@ -2,6 +2,7 @@
 using Android.App;
 using Android.Content;
 using Android.Graphics;
+using Android.Graphics.Drawables;
 using Android.InputMethodServices;
 using Android.OS;
 using Android.Text;
@@ -30,12 +31,16 @@ public sealed class KeyboardService : InputMethodService
     private LinearLayout? _candidates;
     private HorizontalScrollView? _candidateScroll;
     private NextKeyPrediction? _nextKeyPrediction;
+    private FlickPreview? _flickPreview;
+    private ISharedPreferencesOnSharedPreferenceChangeListener? _layoutListener;
+    private bool _godanEnabled;
     private string _predictionPrefix = "";
     private bool _adaptiveAllowed;
     private string? _contextBefore, _contextAfter;
     private readonly Dictionary<View, KeyTouch> _letterTouches = [];
     private string? _candidateSignature;
     private readonly List<KeyTouch> _touches = [];
+    private readonly List<FlickTouch> _flickTouches = [];
     private readonly KeyPressOrder _pressOrder = new();
     private Button? _mode;
     private Button? _shift;
@@ -51,11 +56,13 @@ public sealed class KeyboardService : InputMethodService
     private ISharedPreferences? _clipboardOfferPreferences;
     private readonly ClipboardHistory _clipboardHistory = new();
     private LinearLayout? _keyRows;
-    private LinearLayout? _keyboardBody;
+    private LinearLayout? _keyboardBody, _keyboardArea;
+    private View? _root;
     private View? _leftHandSpace, _rightHandSpace;
     private Button? _oneHandButton;
     private ISharedPreferences? _layoutPreferences;
     private int _oneHandMode; // 0: full width, 1: left, 2: right
+    private int _layoutMode; // 0: QWERTY, 1: Godan
     private bool _symbols;
     private string[]? _numberRows;
     private bool _phone;
@@ -72,6 +79,8 @@ public sealed class KeyboardService : InputMethodService
     private NativeZenzEvaluator? _zenz;
     private bool _zenzPollScheduled;
     private volatile bool _stopping;
+    private const int QwertyLayout = 0, GodanLayout = 1;
+    private int KeyboardHeightDp => _layoutMode == GodanLayout && !_symbols && _numberRows == null ? 292 : 258;
 
     public override void OnCreate()
     {
@@ -79,11 +88,16 @@ public sealed class KeyboardService : InputMethodService
         base.OnCreate();
         if (OperatingSystem.IsAndroidVersionAtLeast(29) && Window?.Window is { } imeWindow)
             imeWindow.NavigationBarContrastEnforced = false;
+        _flickPreview = new FlickPreview(this);
         _layoutPreferences = GetSharedPreferences("keyboard-layout", FileCreationMode.Private);
         _oneHandMode = _layoutPreferences!.GetInt("one-hand-mode", 0);
         if (_oneHandMode is < 0 or > 2) _oneHandMode = 0;
+        _godanEnabled = _layoutPreferences!.GetBoolean("godan-enabled", false);
+        _layoutMode = _godanEnabled && _layoutPreferences.GetInt("layout-mode", GodanLayout) == GodanLayout ? GodanLayout : QwertyLayout;
         _preferences = new InputPreferenceStore(System.IO.Path.Combine(FilesDir!.AbsolutePath, "input-preferences.json"));
         _main = new Handler(Looper.MainLooper!);
+        _layoutListener = new LayoutPreferenceListener(this);
+        _layoutPreferences.RegisterOnSharedPreferenceChangeListener(_layoutListener);
         _thread = new HandlerThread("MeltypeInput"); _thread.Start();
         _worker = new Handler(_thread.Looper!);
         _zenz = LocalZenz.Create(this);
@@ -113,6 +127,7 @@ public sealed class KeyboardService : InputMethodService
     {
         _letters.Clear();
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        _root = root;
         root.SetBackgroundColor(MobileStyle.KeyboardBackground);
         _inputRoot = root;
         var keyboardInsets = _keyboardInsets = new KeyboardInsets();
@@ -120,19 +135,21 @@ public sealed class KeyboardService : InputMethodService
         root.LayoutChange += (_, _) => root.Post(() => keyboardInsets.Apply(root));
         root.Post(() => { root.RequestApplyInsets(); keyboardInsets.Apply(root); });
         var keyboardArea = new LinearLayout(this) { Orientation = Orientation.Horizontal, BaselineAligned = false };
+        _keyboardArea = keyboardArea;
         _keyboardBody = new LinearLayout(this) { Orientation = Orientation.Vertical };
         _leftHandSpace = new View(this); _rightHandSpace = new View(this);
-        keyboardArea.AddView(_leftHandSpace, new LinearLayout.LayoutParams(0, Dp(258), 1));
-        keyboardArea.AddView(_keyboardBody, new LinearLayout.LayoutParams(0, Dp(258), 4));
-        keyboardArea.AddView(_rightHandSpace, new LinearLayout.LayoutParams(0, Dp(258), 1));
-        root.AddView(keyboardArea, new LinearLayout.LayoutParams(-1, Dp(258)));
+        var height = KeyboardHeightDp;
+        keyboardArea.AddView(_leftHandSpace, new LinearLayout.LayoutParams(0, Dp(height), 1));
+        keyboardArea.AddView(_keyboardBody, new LinearLayout.LayoutParams(0, Dp(height), 4));
+        keyboardArea.AddView(_rightHandSpace, new LinearLayout.LayoutParams(0, Dp(height), 1));
+        root.AddView(keyboardArea, new LinearLayout.LayoutParams(-1, Dp(height)));
         ApplyHandLayout();
         _candidateSignature = null;
         var scroll = new HorizontalScrollView(this) { HorizontalScrollBarEnabled = false };
         _candidateScroll = scroll;
         _candidates = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         _candidates.SetGravity(GravityFlags.CenterVertical); scroll.AddView(_candidates);
-        scroll.SetBackgroundColor(Color.White);
+        scroll.SetBackgroundColor(MobileStyle.CandidateBackground);
         var candidateRow = new LinearLayout(this) { Orientation = Orientation.Horizontal, BaselineAligned = false };
         _clipboardButton = new Button(this) { Text = "▤", TextSize = 23, ContentDescription = "クリップボードを開く" };
         MobileStyle.KeyboardKey(_clipboardButton, function: true); _clipboardButton.Click += (_, _) =>
@@ -150,8 +167,10 @@ public sealed class KeyboardService : InputMethodService
         MobileStyle.KeyboardKey(_hide, function: true); _hide.Click += (_, _) => HideKeyboard();
         candidateRow.AddView(_hide, new LinearLayout.LayoutParams(Dp(44), Dp(42)));
         _keyboardBody.AddView(candidateRow, new LinearLayout.LayoutParams(-1, Dp(42)));
-        _keyRows = new LinearLayout(this) { Orientation = Orientation.Vertical }; _keyboardBody.AddView(_keyRows, new LinearLayout.LayoutParams(-1, Dp(216)));
-        BuildKeyRows(); Status(); return root;
+        _keyRows = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        _keyboardBody.AddView(_keyRows, new LinearLayout.LayoutParams(-1, Dp(height - 42)));
+        BuildKeyRows(); Status();
+        return root;
     }
     private void SetHandLayout(int mode)
     {
@@ -170,11 +189,13 @@ public sealed class KeyboardService : InputMethodService
     private void BuildKeyRows()
     {
         if (_keyRows == null) return;
+        _flickPreview?.Hide();
         CancelTouches();
         _clipboardOpen = false;
-        _touches.Clear();
+        _touches.Clear(); _flickTouches.Clear();
         _letterTouches.Clear(); _predictionPrefix = "";
         _keyRows.RemoveAllViews(); _letters.Clear(); _shift = null; _mode = null; _punctuation = null;
+        ApplyKeyboardMetrics();
         if (_numberRows != null)
         {
             for (var i = 0; i < _numberRows.Length; i++)
@@ -192,6 +213,11 @@ public sealed class KeyboardService : InputMethodService
                 else AddKey(line, "↵", () => Special(0x0D), description: "確定・次へ");
                 _keyRows.AddView(line);
             }
+            return;
+        }
+        if (!_symbols && _layoutMode == GodanLayout)
+        {
+            BuildGodanRows();
             return;
         }
         foreach (var row in _symbols ? new[] { "1234567890", "@#¥%&-+(/「", "_':;\"!?" } : new[] { "qwertyuiop", "asdfghjkl-", "zxcvbnm" })
@@ -214,32 +240,242 @@ public sealed class KeyboardService : InputMethodService
             if (shortRow) AddKey(line, "⌫", () => Special(0x08), 1.5f, description: "削除、長押しで連続削除", repeat: true);
             _keyRows.AddView(line);
         }
-        var controls = new LinearLayout(this) { BaselineAligned = false };
-        AddKey(controls, _symbols ? "ABC" : "123", () => { _symbols = !_symbols; BuildKeyRows(); Status(); }, description: "数字・記号と英字配列を切り替える", longAction: ShowExtraSymbols);
-        _mode = AddKey(controls, "日英", () =>
+        BuildControlRow(54);
+    }
+
+    // Gboard の GODAN と同じ 5 段 3 列。中央の文字キーの左右に操作列を置く。
+    private void BuildGodanRows()
+    {
+        if (_keyRows == null) return;
+        var main = new LinearLayout(this) { Orientation = Orientation.Horizontal, BaselineAligned = false };
+        var left = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        var center = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        var right = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        main.AddView(left, new LinearLayout.LayoutParams(0, -1, 1));
+        main.AddView(center, new LinearLayout.LayoutParams(0, -1, 3));
+        main.AddView(right, new LinearLayout.LayoutParams(0, -1, 1));
+        _keyRows.AddView(main, new LinearLayout.LayoutParams(-1, Dp(250)));
+
+        // 左の操作列: 数字・左移動・配列切替・文字種
+        AddSideKey(left, "戻す", Undo, description: "元に戻す（未確定は取消、確定後は Ctrl+Z）");
+        AddSideKey(left, "←", () => Special(0x25), description: "左へ移動");
+        AddSideKey(left, "記号", () => { _symbols = true; BuildKeyRows(); Status(); }, description: "数字・記号と英字配列を切り替える", longAction: ShowExtraSymbols);
+        _mode = AddSideKey(left, "かな/A", ToggleKanaAlphabet, description: "かな/A（タップでかな/アルファベットを切り替える）", longAction: ShowCharacterModes);
+        AddSideKey(left, "QWERTY", () => SetLayout(QwertyLayout), description: "QWERTY配列に切り替える");
+
+        foreach (var row in GodanKeyboard.Rows)
         {
-            _predictionPrefix = "";
-            if (_restricted || !_ready) return;
-            if (!_english && !_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text))
-            { Queue(() => _session?.ToggleKana()); return; }
-            _english = !_english;
-            var english = _english;
-            Queue(() => _session?.SetEnglish(english)); Status();
-        }, description: "英語専用モードに切り替える", hint: "▴", longAction: ShowCharacterModes, longPressEnabled: false);
-        _punctuation = AddKey(controls, ",", () => Input(_punctuationInput), hint: ".", longAction: () => Input(_punctuationAlternate));
+            var line = new LinearLayout(this) { BaselineAligned = false };
+            foreach (var model in row)
+            {
+                if (model == null) AddGodanModifierKey(line);
+                else AddGodanKey(line, model);
+            }
+            center.AddView(line, new LinearLayout.LayoutParams(-1, Dp(50)));
+        }
+
+        // 右の操作列: 削除・右移動・確定
+        AddSideKey(right, "⌫", () => Special(0x08), description: "削除、長押しで連続削除", repeat: true);
+        AddSideKey(right, "→", () => Special(0x27), description: "右へ移動");
+        AddSideKey(right, "空白", InputSpace, description: "空白・変換");
+        AddSideKey(right, "↵", () => Special(0x0D), description: "確定・改行", height: 100);
+    }
+
+    private Button AddSideKey(LinearLayout column, string label, Action action, int height = 50,
+        string? description = null, bool repeat = false, Action? longAction = null)
+    {
+        var row = new LinearLayout(this) { BaselineAligned = false };
+        var key = AddKey(row, label, action, height: height, description: description, repeat: repeat, longAction: longAction);
+        column.AddView(row, new LinearLayout.LayoutParams(-1, Dp(height)));
+        return key;
+    }
+
+    private void AddSideSpacer(LinearLayout column) =>
+        column.AddView(new View(this), new LinearLayout.LayoutParams(-1, Dp(50)));
+
+    private void BuildControlRow(int height)
+    {
+        if (_keyRows == null) return;
+        var controls = new LinearLayout(this) { BaselineAligned = false };
+        var godanSymbols = _symbols && _layoutMode == GodanLayout;
+        AddKey(controls, _symbols ? (godanSymbols ? "五段" : "ABC") : "123", () => { _symbols = !_symbols; BuildKeyRows(); Status(); }, height: height, description: godanSymbols ? "GODAN配列に戻る" : "数字・記号と英字配列を切り替える", longAction: ShowExtraSymbols);
+        if (!_symbols && _layoutMode == QwertyLayout && _godanEnabled)
+            AddKey(controls, "五段", () => SetLayout(GodanLayout), height: height, description: "GODAN配列に切り替える");
+        _mode = AddKey(controls, "日英", ToggleMode, height: height, description: "英語専用モードに切り替える", hint: "▴", longAction: ShowCharacterModes, longPressEnabled: false);
+        _punctuation = AddKey(controls, ",", () => Input(_punctuationInput), height: height, hint: ".", longAction: () => Input(_punctuationAlternate));
         _punctuationHint = (TextView)((FrameLayout)_punctuation.Parent!).GetChildAt(1)!;
         _punctuation.ContentDescription = "句読点、右上の文字は上フリック・長押しで入力";
-        AddKey(controls, "空白", InputSpace, 3, description: "空白・変換");
-        AddKey(controls, "←", () => Special(0x25), description: "左へ移動");
-        AddKey(controls, "→", () => Special(0x27), description: "右へ移動");
-        AddKey(controls, "↵", () => Special(0x0D), 2, description: "確定・改行"); _keyRows.AddView(controls);
+        AddKey(controls, "空白", InputSpace, 3, height, description: "空白・変換");
+        AddKey(controls, "←", () => Special(0x25), height: height, description: "左へ移動");
+        AddKey(controls, "→", () => Special(0x27), height: height, description: "右へ移動");
+        AddKey(controls, "↵", () => Special(0x0D), 2, height, description: "確定・改行");
+        _keyRows.AddView(controls);
     }
+
+    private void AddGodanKey(LinearLayout row, GodanKey model)
+    {
+        var key = new Button(this) { Text = model.Label, TextSize = 20, ContentDescription = GodanKeyboard.Describe(model) };
+        key.SetSingleLine(true);
+        MobileStyle.KeyboardKey(key);
+        var frame = new FrameLayout(this);
+        frame.AddView(key, new FrameLayout.LayoutParams(-1, -1));
+        static string? Hint(GodanAction? action) => action is { Hint: true } ? action.Label : null;
+        AddGodanHint(frame, Hint(model.Up), GravityFlags.Top | GravityFlags.CenterHorizontal, 0, 2, 0, 0);
+        AddGodanHint(frame, Hint(model.Down), GravityFlags.Bottom | GravityFlags.CenterHorizontal, 0, 0, 0, 2);
+        AddGodanHint(frame, Hint(model.Left), GravityFlags.Left | GravityFlags.CenterVertical, 6, 0, 0, 0);
+        AddGodanHint(frame, Hint(model.Right), GravityFlags.Right | GravityFlags.CenterVertical, 0, 0, 6, 0);
+        var touch = new FlickTouch(model, InputGodan, _pressOrder, ViewConfiguration.Get(this)!.ScaledTouchSlop,
+            () => key.Text = model.Label, preview: _flickPreview);
+        _flickTouches.Add(touch); key.SetOnTouchListener(touch);
+        key.Click += (_, _) => { _pressOrder.BeforePress(); touch.Cancel(); InputGodan(model.Tap); };
+        row.AddView(frame, new LinearLayout.LayoutParams(0, Dp(50), 1));
+    }
+
+    private void AddGodanModifierKey(LinearLayout row)
+    {
+        var key = new Button(this) { Text = "大⇔小", TextSize = 13,
+            ContentDescription = "大⇔小。タップで濁点/半濁点/小書きを順に切り替え、上フリックで小書き/通常、左フリックで半濁点、右フリックで濁点" };
+        MobileStyle.KeyboardKey(key);
+        var frame = new FrameLayout(this);
+        frame.AddView(key, new FrameLayout.LayoutParams(-1, -1));
+        AddGodanHint(frame, "゛ ゜", GravityFlags.Top | GravityFlags.CenterHorizontal, 0, 2, 0, 0);
+        var model = new GodanKey("大⇔小",
+            Tap: new("", "大⇔小", Kind: GodanActionKind.CycleKana),
+            Up: new("", "小", Kind: GodanActionKind.SmallLarge, Hint: false),
+            Left: new("", "゜", Kind: GodanActionKind.Handakuten, Hint: false),
+            Right: new("", "゛", Kind: GodanActionKind.Dakuten, Hint: false));
+        var touch = new FlickTouch(model, InputGodan, _pressOrder, ViewConfiguration.Get(this)!.ScaledTouchSlop,
+            () => key.Text = "大⇔小", fallbackToTap: false, preview: _flickPreview);
+        _flickTouches.Add(touch); key.SetOnTouchListener(touch);
+        key.Click += (_, _) => { _pressOrder.BeforePress(); touch.Cancel(); InputGodan(model.Tap); };
+        row.AddView(frame, new LinearLayout.LayoutParams(0, Dp(50), 1));
+    }
+
+    private void AddGodanHint(FrameLayout frame, string? label, GravityFlags gravity, int left, int top, int right, int bottom)
+    {
+        if (label == null) return;
+        var mark = new TextView(this)
+        {
+            Text = label,
+            TextSize = 9,
+            Gravity = gravity,
+            ImportantForAccessibility = ImportantForAccessibility.No,
+            Clickable = false,
+            Focusable = false,
+        };
+        mark.SetIncludeFontPadding(false);
+        mark.SetTextColor(MobileStyle.Muted);
+        frame.AddView(mark, new FrameLayout.LayoutParams(Dp(36), Dp(14), gravity)
+        {
+            LeftMargin = Dp(left), TopMargin = Dp(top), RightMargin = Dp(right), BottomMargin = Dp(bottom),
+        });
+    }
+
+    private void SetLayout(int mode)
+    {
+        if (mode == GodanLayout && !_godanEnabled) return;
+        if (_layoutMode == mode) return;
+        _layoutMode = mode;
+        _layoutPreferences!.Edit()!.PutInt("layout-mode", mode)!.Apply();
+        _shiftState.Reset();
+        BuildKeyRows();
+        Status();
+    }
+
+    private void ApplyKeyboardMetrics()
+    {
+        if (_keyboardArea == null || _keyboardBody == null || _keyRows == null) return;
+        var height = Dp(KeyboardHeightDp);
+        _keyboardArea.LayoutParameters!.Height = height;
+        _keyboardBody.LayoutParameters!.Height = height;
+        if (_leftHandSpace?.LayoutParameters is { } left) left.Height = height;
+        if (_rightHandSpace?.LayoutParameters is { } right) right.Height = height;
+        _keyRows.LayoutParameters!.Height = height - Dp(42);
+        _keyboardArea.RequestLayout();
+    }
+
+    private void InputGodan(GodanAction action)
+    {
+        _clipboardSuggestion.Dismiss();
+        _shiftState.Consume();
+        if (action.Kind != GodanActionKind.Input)
+        {
+            if (_restricted) return;
+            switch (action.Kind)
+            {
+                case GodanActionKind.SmallLarge: Queue(() => _session?.ToggleSmallLast()); break;
+                case GodanActionKind.CycleKana: Queue(() => _session?.CycleKanaVariant()); break;
+                case GodanActionKind.Dakuten: Queue(() => _session?.ApplyDakuten(false)); break;
+                case GodanActionKind.Handakuten: Queue(() => _session?.ApplyDakuten(true)); break;
+            }
+            _predictionPrefix = "";
+            Status();
+            return;
+        }
+        if (_restricted)
+        {
+            CurrentInputConnection?.CommitText(action.Input, 1);
+            _predictionPrefix = "";
+            return;
+        }
+        if (action.Literal)
+        {
+            _predictionPrefix = "";
+            Queue(() => _session?.InsertLiteral(action.Input));
+            Status();
+            return;
+        }
+        var letters = new string(action.Input.Where(c => c is >= 'a' and <= 'z').Select(char.ToLowerInvariant).ToArray());
+        _predictionPrefix = letters.Length == 0
+            ? ""
+            : (_predictionPrefix + letters)[^Math.Min(_predictionPrefix.Length + letters.Length, 32)..];
+        Queue(() => { foreach (var c in action.Input) _session?.Character(c); });
+        Status();
+    }
+
+    /// <summary>GODAN の「かな/A」: 未確定の文字は かな ⇔ アルファベット、無ければ入力モードを切り替える。</summary>
+    private void ToggleKanaAlphabet()
+    {
+        _predictionPrefix = "";
+        if (_restricted || !_ready) return;
+        if (_english)
+        {
+            _english = false;
+            // 英字モードを抜けたあと、次の入力がかなになるよう表示モードもひらがなに戻す。
+            Queue(() => { _session?.SetEnglish(false); _session?.Key(0x75); });
+            Status();
+            return;
+        }
+        if (!_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text))
+        {
+            // 変換中は未確定の表示が漢字だけになる (nihongo → 日本語)。漢字も日本語として数え、1 回で英字へ向ける。
+            var toAlphabet = KanaAlphabetSwitch.ToAlphabet(_shownView!.Text);
+            Queue(() => _session?.Key(toAlphabet ? 0x79 : 0x75)); // F10 = 英字、F6 = ひらがな
+            Status();
+            return;
+        }
+        _english = true;
+        Queue(() => _session?.SetEnglish(true));
+        Status();
+    }
+
+    private void ToggleMode()
+    {
+        _predictionPrefix = "";
+        if (_restricted || !_ready) return;
+        if (!_english && !_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text))
+        { Queue(() => _session?.ToggleKana()); return; }
+        _english = !_english;
+        var english = _english;
+        Queue(() => _session?.SetEnglish(english)); Status();
+    }
+
     private int Dp(int pixels) => MobileStyle.Dp(this, pixels);
     private Button AddKey(LinearLayout row, string label, Action action, float weight = 1, int height = 54, string? description = null, bool repeat = false, string? hint = null, Action? longAction = null, bool longPressEnabled = true)
     {
         var key = new Button(this) { Text = label, TextSize = label.Length > 1 ? 13 : 20, ContentDescription = description ?? label };
         key.SetSingleLine(true);
-        MobileStyle.KeyboardKey(key, function: label is "⇧" or "⌫" or "↵" or "←" or "→" or "ABC" or "123" or "日英" or "空白" or "全消去"); Action invoke = () => { action(); if (label != "⇧") { _shiftState.Consume(); Status(); } };
+        MobileStyle.KeyboardKey(key, function: label is "⇧" or "⌫" or "↵" or "←" or "→" or "ABC" or "123" or "日英" or "空白" or "全消去" or "五段" or "QWERTY" or "戻す" or "記号" or "かな/A"); Action invoke = () => { action(); if (label != "⇧") { _shiftState.Consume(); Status(); } };
         key.Click += (_, _) => { _pressOrder.BeforePress(); invoke(); };
         {
             var touch = new KeyTouch(_main!, invoke, repeat, _pressOrder, ViewConfiguration.Get(this)!.ScaledTouchSlop,
@@ -308,14 +544,39 @@ public sealed class KeyboardService : InputMethodService
     public override void OnStartInputView(EditorInfo? info, bool restarting)
     {
         base.OnStartInputView(info, restarting);
+        ApplyLayoutPreference();
         _clipboardOfferPreferences ??= GetSharedPreferences("clipboard-offer", FileCreationMode.Private);
         _clipboardSuggestion = new ClipboardSuggestion(_clipboardOfferPreferences!.GetLong("last-copy", 0));
         RefreshClipboardSuggestion(offer: true);
         Status();
     }
 
+    internal void OnLayoutPreferenceChanged() => _main?.Post(ApplyLayoutPreference);
+
+    private void ApplyLayoutPreference()
+    {
+        var enabled = _layoutPreferences!.GetBoolean("godan-enabled", false);
+        var saved = _layoutPreferences.GetInt("layout-mode", GodanLayout);
+        var mode = enabled && saved == GodanLayout ? GodanLayout : QwertyLayout;
+        if (_godanEnabled == enabled && _layoutMode == mode) return;
+        _godanEnabled = enabled;
+        _layoutMode = mode;
+        if (_keyRows != null) { BuildKeyRows(); Status(); }
+    }
+
+    private sealed class LayoutPreferenceListener : Java.Lang.Object, ISharedPreferencesOnSharedPreferenceChangeListener
+    {
+        private readonly KeyboardService _owner;
+        public LayoutPreferenceListener(KeyboardService owner) => _owner = owner;
+        public void OnSharedPreferenceChanged(ISharedPreferences? sharedPreferences, string? key)
+        {
+            if (key is "layout-mode" or "godan-enabled") _owner.OnLayoutPreferenceChanged();
+        }
+    }
+
     public override void OnFinishInput()
     {
+        _flickPreview?.Hide();
         CancelTouches();
         CurrentInputConnection?.FinishComposingText();
         _preeditActive = false; _shownView = null; _choosingBrackets = false; _shiftState.Reset();
@@ -326,6 +587,7 @@ public sealed class KeyboardService : InputMethodService
     }
     public override void OnFinishInputView(bool finishingInput)
     {
+        _flickPreview?.Hide();
         _clipboardSuggestion.Dismiss();
         CancelTouches(); _shiftState.Reset();
         _english = false;
@@ -373,6 +635,20 @@ public sealed class KeyboardService : InputMethodService
         var wide = p.FullWidthSpaceByDefault ? !shifted : shifted && !p.ShiftSpaceHalfWidth;
         if (_restricted) CurrentInputConnection?.CommitText(wide ? "　" : " ", 1);
         else Queue(() => _session?.SpaceKey(shifted));
+    }
+
+    private void Undo()
+    {
+        _clipboardSuggestion.Dismiss();
+        if (_restricted) return;
+        if (_shownView != null) { Special(0x1B); return; }
+        var editor = CurrentInputConnection;
+        if (editor == null) return;
+        var now = SystemClock.UptimeMillis();
+        var meta = (MetaKeyStates)0x3000; // META_CTRL_ON | META_CTRL_LEFT_ON
+        editor.SendKeyEvent(new KeyEvent(now, now, KeyEventActions.Down, Keycode.Z, 0, meta));
+        editor.SendKeyEvent(new KeyEvent(now, now, KeyEventActions.Up, Keycode.Z, 0, meta));
+        Status();
     }
 
     private void Special(int key)
@@ -710,9 +986,17 @@ public sealed class KeyboardService : InputMethodService
         if (_mode != null)
         {
             var pending = !_restricted && !_english && !_choosingBrackets && !string.IsNullOrEmpty(_shownView?.Text);
-            _mode.Text = pending ? (_shownKatakana ? "自動" : "カナ") : _restricted || _english ? "英語" : "自動";
-            _mode.ContentDescription = pending ? (_shownKatakana ? "日英自動判別に戻る" : "未確定文字をカタカナにする") : _english ? "日英自動判別に戻る" : "英語専用モードに切り替える";
-            _mode.ContentDescription += "、上フリックで文字種を選ぶ";
+            if (_layoutMode == GodanLayout && !_symbols && _numberRows == null)
+            {
+                _mode.Text = "かな/A";
+                _mode.ContentDescription = "かな/A。タップでかな/アルファベットを切り替える";
+            }
+            else
+            {
+                _mode.Text = pending ? (_shownKatakana ? "自動" : "カナ") : _restricted || _english ? "英語" : "自動";
+                _mode.ContentDescription = pending ? (_shownKatakana ? "日英自動判別に戻る" : "未確定文字をカタカナにする") : _english ? "日英自動判別に戻る" : "英語専用モードに切り替える";
+                _mode.ContentDescription += "、上フリックで文字種を選ぶ";
+            }
             _mode.Enabled = _ready && !_restricted;
         }
         foreach (var (key, letter) in _letters) key.Text = (_shiftState.Active ? char.ToUpperInvariant(letter) : letter).ToString();
@@ -724,11 +1008,14 @@ public sealed class KeyboardService : InputMethodService
     {
         _stopping = true;
         _zenz?.Dispose();
+        if (_layoutListener != null) _layoutPreferences?.UnregisterOnSharedPreferenceChangeListener(_layoutListener);
+        _layoutListener = null;
+        _flickPreview?.Hide();
         CancelTouches();
         Interlocked.Increment(ref _generation); _thread?.QuitSafely(); base.OnDestroy();
     }
 
-    private void CancelTouches() { foreach (var touch in _touches) touch.Cancel(); _predictionPrefix = ""; }
+    private void CancelTouches() { foreach (var touch in _touches) touch.Cancel(); foreach (var touch in _flickTouches) touch.Cancel(); _predictionPrefix = ""; }
     private PersonalRomajiTypos? LoadPersonalTypos() =>
         PersonalRomajiTypos.Load(Path.Combine(FilesDir!.AbsolutePath, "personal-romaji-typos.json"));
     private (View View, KeyTouch Touch)? ResolveLetterTouch(View source, MotionEvent e)
@@ -745,6 +1032,187 @@ public sealed class KeyboardService : InputMethodService
         var letter = AdaptiveKeyTarget.Choose(keys, x, y, c => _nextKeyPrediction.Probability(_predictionPrefix, c));
         var target = _letters.FirstOrDefault(item => item.Letter == letter).Key;
         return target != null && target != source && _letterTouches.TryGetValue(target, out var touch) ? (target, touch) : null;
+    }
+
+    // GODAN のフリック。押した方向をキーの表示に反映し、離した方向の文字を入力する。
+    private sealed class FlickTouch : Java.Lang.Object, View.IOnTouchListener
+    {
+        private readonly GodanKey _key;
+        private readonly Action<GodanAction> _input;
+        private readonly KeyPressOrder _order;
+        private readonly int _slop;
+        private readonly Action _reset;
+        private readonly bool _fallbackToTap;
+        private readonly FlickPreview? _preview;
+        private View? _view;
+        private GodanDirection? _direction;
+        private float _downX, _downY;
+        private bool _tracking;
+
+        public FlickTouch(GodanKey key, Action<GodanAction> input, KeyPressOrder order, int slop, Action reset, bool fallbackToTap = true, FlickPreview? preview = null)
+        {
+            _key = key; _input = input; _order = order; _slop = slop; _reset = reset; _fallbackToTap = fallbackToTap; _preview = preview;
+        }
+
+        public bool OnTouch(View? view, MotionEvent? e)
+        {
+            if (view == null || e == null) return false;
+            if (e.ActionMasked == MotionEventActions.Down)
+            {
+                _order.BeforePress();
+                Cancel();
+                _view = view; _tracking = true; _downX = e.GetX(); _downY = e.GetY(); _direction = null;
+                view.Pressed = true;
+                _preview?.Show(_key, view);
+                return true;
+            }
+            if (!_tracking || view != _view) return true;
+            if (e.ActionMasked == MotionEventActions.Move)
+            {
+                UpdateDirection(view, e.GetX() - _downX, e.GetY() - _downY);
+                _preview?.SetDirection(_direction);
+                return true;
+            }
+            if (e.ActionMasked == MotionEventActions.Up)
+            {
+                UpdateDirection(view, e.GetX() - _downX, e.GetY() - _downY);
+                _preview?.Hide();
+                var direction = _direction ?? GodanDirection.Tap;
+                var action = _key.Action(direction);
+                _tracking = false; _direction = null; _view = null; view.Pressed = false; _reset();
+                if (action is null && !_fallbackToTap) return true;
+                _input(action ?? _key.Tap);
+                return true;
+            }
+            if (e.ActionMasked == MotionEventActions.Cancel) { Cancel(); return true; }
+            return true;
+        }
+
+        private void UpdateDirection(View view, float dx, float dy)
+        {
+            GodanDirection? direction = Math.Abs(dx) <= _slop && Math.Abs(dy) <= _slop
+                ? null
+                : Math.Abs(dx) > Math.Abs(dy)
+                    ? (dx < 0 ? GodanDirection.Left : GodanDirection.Right)
+                    : (dy < 0 ? GodanDirection.Up : GodanDirection.Down);
+            if (direction == _direction) return;
+            _direction = direction;
+            if (view is Button button)
+                button.Text = direction is { } value && _key.Action(value) is { } action ? action.Label : _key.Label;
+        }
+
+        public void Cancel()
+        {
+            _preview?.Hide();
+            _tracking = false; _direction = null;
+            if (_view == null) return;
+            _view.Pressed = false; _view = null; _reset();
+        }
+    }
+
+
+    // GODAN のキーを押したときに、スライド候補をキーの上に浮かべる。
+    private sealed class FlickPreview
+    {
+        private readonly KeyboardService _owner;
+        private PopupWindow? _popup;
+        private Dictionary<GodanDirection, TextView>? _cells;
+        private GradientDrawable? _highlight;
+
+        public FlickPreview(KeyboardService owner) => _owner = owner;
+
+        public void Show(GodanKey key, View anchor)
+        {
+            Hide();
+            var root = Build(key);
+            root.Measure(View.MeasureSpec.MakeMeasureSpec(0, MeasureSpecMode.Unspecified),
+                         View.MeasureSpec.MakeMeasureSpec(0, MeasureSpecMode.Unspecified));
+            var width = root.MeasuredWidth;
+            var height = root.MeasuredHeight;
+            var popup = new PopupWindow(root, width, height, false)
+            {
+                Focusable = false,
+                OutsideTouchable = false,
+            };
+            popup.Touchable = false;
+            popup.SetBackgroundDrawable(new ColorDrawable(Color.Transparent));
+            try
+            {
+                // キーのすぐ上に出す。上に入りきらないときは Android が下へ回す。
+                popup.ShowAsDropDown(anchor, (anchor.Width - width) / 2, -height - _owner.Dp(6));
+                _popup = popup;
+                SetDirection(null);
+            }
+            catch (Exception)
+            {
+                popup.Dismiss();
+                _cells = null;
+                _highlight = null;
+            }
+        }
+
+        public void SetDirection(GodanDirection? direction)
+        {
+            if (_cells == null) return;
+            var current = direction ?? GodanDirection.Tap;
+            foreach (var pair in _cells)
+                pair.Value.Background = pair.Key == current ? _highlight : null;
+        }
+
+        public void Hide()
+        {
+            _popup?.Dismiss();
+            _popup = null;
+            _cells = null;
+            _highlight = null;
+        }
+
+        private LinearLayout Build(GodanKey key)
+        {
+            _cells = new Dictionary<GodanDirection, TextView>();
+            _highlight = new GradientDrawable();
+            _highlight.SetColor(MobileStyle.FunctionKeyBackground);
+            _highlight.SetCornerRadius(_owner.Dp(8));
+
+            var root = new LinearLayout(_owner) { Orientation = Orientation.Vertical };
+            var background = new GradientDrawable();
+            background.SetColor(MobileStyle.KeyBackground);
+            background.SetCornerRadius(_owner.Dp(12));
+            background.SetStroke(_owner.Dp(1), MobileStyle.KeyStroke);
+            root.Background = background;
+            root.SetPadding(_owner.Dp(6), _owner.Dp(6), _owner.Dp(6), _owner.Dp(6));
+
+            AddRow(root, key, null, GodanDirection.Up, null);
+            AddRow(root, key, GodanDirection.Left, GodanDirection.Tap, GodanDirection.Right);
+            AddRow(root, key, null, GodanDirection.Down, null);
+            return root;
+        }
+
+        private void AddRow(LinearLayout root, GodanKey key, GodanDirection? left, GodanDirection? middle, GodanDirection? right)
+        {
+            var row = new LinearLayout(_owner) { Orientation = Orientation.Horizontal };
+            foreach (var direction in new[] { left, middle, right })
+            {
+                if (direction is null)
+                {
+                    row.AddView(new View(_owner), new LinearLayout.LayoutParams(_owner.Dp(46), _owner.Dp(40)));
+                    continue;
+                }
+                var action = direction == GodanDirection.Tap ? key.Tap : key.Action(direction.Value);
+                var label = direction == GodanDirection.Tap ? key.Label : action?.Label ?? "—";
+                var cell = new TextView(_owner)
+                {
+                    Text = label,
+                    TextSize = direction == GodanDirection.Tap ? (label.Length > 1 ? 14 : 18) : 13,
+                    Gravity = GravityFlags.Center,
+                };
+                cell.SetIncludeFontPadding(false);
+                cell.SetTextColor(action is null && direction != GodanDirection.Tap ? MobileStyle.Muted : MobileStyle.Ink);
+                row.AddView(cell, new LinearLayout.LayoutParams(_owner.Dp(46), _owner.Dp(40)));
+                _cells![direction.Value] = cell;
+            }
+            root.AddView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WrapContent, ViewGroup.LayoutParams.WrapContent));
+        }
     }
 
     private sealed class KeyTouch : Java.Lang.Object, View.IOnTouchListener
