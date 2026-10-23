@@ -62,6 +62,7 @@ public sealed class KeyboardService : InputMethodService
     private bool _shownKatakana, _choosingBrackets;
     private readonly List<(Button Key, char Letter)> _letters = [];
     private bool _english, _restricted, _ready;
+    private bool _passwordField;
     private bool _preeditActive;
     private int _generation;
     private int _jobGeneration;
@@ -262,6 +263,8 @@ public sealed class KeyboardService : InputMethodService
         row.AddView(cell, new LinearLayout.LayoutParams(0, Dp(height), weight)); return key;
     }
     public override bool OnEvaluateFullscreenMode() => false;
+
+    public override bool OnEvaluateInputViewShown() => _passwordField || base.OnEvaluateInputViewShown();
     public override void OnStartInput(EditorInfo? attribute, bool restarting)
     {
         base.OnStartInput(attribute, restarting);
@@ -275,6 +278,8 @@ public sealed class KeyboardService : InputMethodService
         var type = attribute?.InputType ?? InputTypes.Null;
         var inputClass = type & InputTypes.MaskClass;
         var variation = type & InputTypes.MaskVariation;
+        _passwordField = variation is InputTypes.TextVariationPassword or InputTypes.TextVariationVisiblePassword
+            or InputTypes.TextVariationWebPassword or InputTypes.NumberVariationPassword;
         var wasNumeric = _numberRows != null;
         _clipboardAllowed = ClipboardInputPolicy.Allows((int)type);
         _numberRows = NumericKeyboard.Rows((int)type);
@@ -308,6 +313,8 @@ public sealed class KeyboardService : InputMethodService
     public override void OnStartInputView(EditorInfo? info, bool restarting)
     {
         base.OnStartInputView(info, restarting);
+        if (_passwordField)
+            Window?.Window?.DecorView?.Post(() => RequestShowSelf(ShowFlags.Implicit));
         _clipboardOfferPreferences ??= GetSharedPreferences("clipboard-offer", FileCreationMode.Private);
         _clipboardSuggestion = new ClipboardSuggestion(_clipboardOfferPreferences!.GetLong("last-copy", 0));
         RefreshClipboardSuggestion(offer: true);
