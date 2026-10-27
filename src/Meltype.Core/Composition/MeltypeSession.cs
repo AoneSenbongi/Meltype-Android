@@ -255,7 +255,6 @@ public sealed class MeltypeSession
             CursorIntoBrackets = () => settings.CursorIntoBrackets,
             ControlKeyBindings = () => settings.ControlKeyBindings,
             CalculatorCandidates = () => settings.CalculatorCandidates,
-            LogKeyIntervals = () => settings.LogKeyIntervals,
             LaughterAfterKana = () => settings.LaughterAfterKana,
             ContextualLearning = () => settings.ContextualLearning,
             FullWidthSpaceByDefault = () => settings.FullWidthSpaceByDefault,

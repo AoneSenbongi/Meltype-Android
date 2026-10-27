@@ -121,7 +121,7 @@ public sealed class MainActivity : Activity
             RefreshPreferences();
         };
         _refreshPreferences = RefreshPreferences;
-        layout.AddView(Label("1.3.0の入力機能", 18, MobileStyle.Ink));
+        layout.AddView(Label("入力設定", 18, MobileStyle.Ink));
         layout.AddView(Label("変更後はキーボードを開き直してください。自動・カナキーの上フリックで文字種、123キーの長押しで追加記号を選べます。予測候補は長押しで学習から削除します。", 12, MobileStyle.Muted));
         string? section = null;
         foreach (var feature in InputFeatureSettings.All)
@@ -132,11 +132,6 @@ public sealed class MainActivity : Activity
                 var heading = Label(section, 15, MobileStyle.Ink); heading.SetPadding(0, Dp(16), 0, Dp(4)); layout.AddView(heading);
             }
             var control = new Switch(this) { Text = feature.Title, TextSize = 14, ContentDescription = "設定 " + feature.Key };
-            if (feature.Key == "LocalZenz" && !LocalZenz.Available(this))
-            {
-                control.Enabled = false;
-                control.Text += "（モデル未導入）";
-            }
             control.SetTextColor(MobileStyle.Ink);
             featureSwitches.Add((control, feature));
             layout.AddView(control, new LinearLayout.LayoutParams(-1, -2) { TopMargin = Dp(6), BottomMargin = Dp(6) });
@@ -147,15 +142,6 @@ public sealed class MainActivity : Activity
                 catch (IOException) { SaveError(); }
             };
         }
-        Add("打鍵間隔の記録を見る", () =>
-        {
-            var entries = Meltype.Diagnostics.Log.Snapshot().Where(e => e.Message.StartsWith("打鍵の間隔:", StringComparison.Ordinal)).TakeLast(200);
-            var text = string.Join("\n", entries.Select(e => e.Message));
-            using var dialog = new AlertDialog.Builder(this);
-            dialog.SetTitle("打鍵間隔（メモリー内のみ）");
-            dialog.SetMessage(text.Length > 0 ? text : "記録はありません。実験設定をONにした入力欄だけで、文字を含めず間隔を記録します。機密欄と学習禁止欄では記録しません。");
-            dialog.SetPositiveButton("閉じる", (_,_) => {}); dialog.Show();
-        });
         var keyboardHeading = Label("キーボード", 18, MobileStyle.Ink);
         keyboardHeading.SetPadding(0, Dp(24), 0, Dp(4)); layout.AddView(keyboardHeading);
         // キーボード配列 (QWERTY / GODAN)。キーボード左下の QWERTY / 五段 と同じ設定を保存する。
@@ -193,7 +179,6 @@ public sealed class MainActivity : Activity
         _layoutListener = new LayoutSettingListener(() => RunOnUiThread(() => _refreshLayout?.Invoke()));
         _layoutPreferences!.RegisterOnSharedPreferenceChangeListener(_layoutListener);
 
-
         RefreshPreferences();
         var trial = Label("試し書き", 16, MobileStyle.Ink); trial.SetPadding(0, Dp(24), 0, Dp(8)); layout.AddView(trial);
         var editor = new EditText(this) { Id = Resource.Id.test_editor, Hint = "kyouhagoogledekensaku", TextSize = 17, InputType = InputTypes.ClassText | InputTypes.TextFlagMultiLine, Gravity = GravityFlags.Top };
@@ -201,7 +186,7 @@ public sealed class MainActivity : Activity
         editor.Background = MobileStyle.Outline(this);
         editor.SetPadding(Dp(16), Dp(16), Dp(16), Dp(16));
         layout.AddView(editor, new LinearLayout.LayoutParams(-1, Dp(120)));
-        var tip = Label("Spaceで変換 · Enterで確定", 12, MobileStyle.Muted);
+        var tip = Label("空白キーで変換 · 確定キーで確定", 12, MobileStyle.Muted);
         tip.SetPadding(0, Dp(10), 0, Dp(6)); layout.AddView(tip);
         Add("ライセンス", () =>
         {
@@ -223,31 +208,11 @@ public sealed class MainActivity : Activity
         frame.SetOnApplyWindowInsetsListener(new SetupInsets(Dp(12), ScrollEditor));
         SetContentView(frame); frame.RequestApplyInsets();
         if (Intent?.GetBooleanExtra("zenzselftest", false) == true) ZenzDeviceSelfTest.Start(this);
+        if (Intent?.GetBooleanExtra("zenzfastselftest", false) == true) FastZenzSelfTest.Start(this);
         else if (Intent?.GetBooleanExtra("selftest", false) == true) RunSelfTest(editor);
     }
-    private void ShowUpdate()
-    {
-        const string url = "https://github.com/AoneSenbongi/Meltype-Android/releases/latest";
-        var version = PackageManager?.GetPackageInfo(PackageName!, (global::Android.Content.PM.PackageInfoFlags)0)?.VersionName ?? "不明";
-        using var dialog = new AlertDialog.Builder(this);
-        dialog.SetTitle("アプリを更新");
-        dialog.SetMessage($"現在のバージョン：{version}\n\n最新の正式配布ページで、現在より新しい版のAPKをダウンロードし、開いて「更新」を押してください。初回はブラウザーからのインストール許可が必要な場合があります。\n\n更新できない場合はアンインストールせず、配布ページの移行案内を確認してください。アンインストールすると辞書・学習データが消えます。");
-        dialog.SetPositiveButton("配布ページを開く", (_, _) =>
-        {
-            try { StartActivity(new Intent(Intent.ActionView, global::Android.Net.Uri.Parse(url))); }
-            catch (ActivityNotFoundException)
-            {
-                using var unavailable = new AlertDialog.Builder(this);
-                unavailable.SetTitle("ブラウザーで開いてください");
-                unavailable.SetMessage(url);
-                unavailable.SetPositiveButton("閉じる", (_, _) => { });
-                unavailable.Show();
-            }
-        });
-        dialog.SetNegativeButton("閉じる", (_, _) => { });
-        dialog.Show();
-    }
-    private sealed class SetupInsets(int gap, Action scroll) : Java.Lang.Object, View.IOnApplyWindowInsetsListener
+    private void ShowUpdate() => StartActivity(new Intent(this, typeof(UpdateActivity)));
+    internal sealed class SetupInsets(int gap, Action scroll) : Java.Lang.Object, View.IOnApplyWindowInsetsListener
     {
         public WindowInsets OnApplyWindowInsets(View? view, WindowInsets? insets)
         {

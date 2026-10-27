@@ -18,8 +18,17 @@ public sealed class AndroidInputSession : ICompositionHost
     private string? _clipboardValue;
     private readonly Func<(string? Before, string? After)>? _surrounding;
     private char? _character;
+    private readonly TouchInputHistory _touchInput = new();
     private long _time;
     private bool _english;
+    public bool English => _english;
+    private readonly PersonalTypoLearning? _typoLearning;
+    private readonly Func<bool> _canLearnTypos;
+    private readonly Func<string, bool> _registeredReading;
+    private CancellationTokenSource _typoLearningCancel = new();
+    private string? _editedWrong, _commitRaw;
+    public Task PendingTypoLearning { get; private set; } = Task.CompletedTask;
+
     private static readonly string[] SentenceEndings =
         ["です", "ます", "でした", "ました", "ません", "ない", "なかった", "だった", "である", "だ", "と思う", "と思います"];
     public CompositionView? View { get; private set; }
@@ -61,24 +70,29 @@ public sealed class AndroidInputSession : ICompositionHost
         Action<int, string, CompositionView?> output, Func<InputPreferences>? preferences = null, bool learningAllowed = true,
         AndroidUserDictionary? userDictionary = null, PersonalRomajiTypos? personalTypos = null,
         Func<string?>? clipboard = null, Func<(string? Before, string? After)>? surrounding = null, string? stateDirectory = null,
-        IContextEvaluator? contextEvaluator = null)
+        IContextEvaluator? contextEvaluator = null, bool coherentRomanReview = false)
     {
         _output = output;
         preferences ??= () => new InputPreferences();
         _preferences = preferences; _clipboard = learningAllowed ? clipboard : null; _surrounding = surrounding;
         string? StateFile(string file) => learningAllowed && stateDirectory != null ? System.IO.Path.Combine(stateDirectory, file) : null;
+        _registeredReading = raw => (userDictionary?.Lookup(new Meltype.Detection.RomajiDetector().ConvertLenient(raw, true)).Count ?? 0) > 0;
+        _canLearnTypos = () => contextEvaluator is not null && learningAllowed && preferences().LearningEnabled && preferences().LocalZenz;
+        if (learningAllowed && stateDirectory != null && contextEvaluator != null)
+            _typoLearning = new PersonalTypoLearning(StateFile("zenz-personal-typos.json")!, contextEvaluator, _canLearnTypos);
         var languages = new LanguageMemory(StateFile("language-memory.json"));
         var detector = CompositionDetector.CreateDefault();
         if (learningAllowed && preferences().LearningEnabled) detector.Memory = languages;
         var predictor = new Predictor(new PhraseHistory(StateFile("phrase-history.tsv")), userDictionary?.CompositionDictionary, null);
         _controller = new CompositionController(_gate, detector, converter, this,
-            new CompositionOptions { ContextEvaluator = contextEvaluator, ShiftArrowsConvertAutoEnglish = true, FullWidthCommaPeriod = true, Comma = () => preferences().Comma[0],
-                Period = () => preferences().Period[0], LearningEnabled = () => learningAllowed && preferences().LearningEnabled, LiveConversion = () => true,
+            new CompositionOptions { ContextEvaluator = contextEvaluator, ContextDebounceMs = 0, ContextOnClauseChange = true, ContextDisplayOnly = true, ContextKanaConversion = true, LearnedRomajiFix = raw => _typoLearning?.Find(raw), ShiftArrowsConvertAutoEnglish = true, FullWidthCommaPeriod = true, Comma = () => preferences().Comma[0],
+                TouchRomajiAlternatives = raw => learningAllowed && preferences().LearningEnabled ? _touchInput.Alternatives(raw) : [],
+                RuleBasedRomanReview = contextEvaluator is null, CoherentRomanReview = coherentRomanReview,
+                Period = () => preferences().Period[0], LearningEnabled = () => learningAllowed && preferences().LearningEnabled, LiveConversion = () => true, LiveConversionMinLength = 2,
                 Candidates = BuiltInCandidates.Value,
                 Predictor = predictor, Languages = languages,
                 Predictions = () => learningAllowed && preferences().LearningEnabled && preferences().Predictions,
                 Learning = () => learningAllowed && preferences().LearningEnabled,
-                LogKeyIntervals = () => learningAllowed && preferences().LearningEnabled && preferences().LogKeyIntervals,
                 CursorIntoBrackets = () => preferences().CursorIntoBrackets,
                 CalculatorCandidates = () => preferences().CalculatorCandidates,
                 ConsonantAbbreviations = () => preferences().ConsonantAbbreviations,
@@ -107,13 +121,16 @@ public sealed class AndroidInputSession : ICompositionHost
     public void SetEnglish(bool english)
     {
         if (_english == english) return;
+        _touchInput.Clear();
+        _editedWrong = null;
         Commit();
         _english = english;
         if (!english) _controller.RestoreAutomaticMode();
     }
 
-    public void Character(char character)
+    public void Character(char character, LetterTouch? touch = null)
     {
+        _touchInput.Append(_controller.RawInput, character, touch);
         if (ChoosingBrackets)
         {
             if (character == ' ') { Key(0x20); return; }
@@ -129,6 +146,7 @@ public sealed class AndroidInputSession : ICompositionHost
         '$' => 0x34, '%' => 0x35, '^' => 0x36, '&' => 0x37, '<' => 0xBC, '>' => 0xBE,
         '\n' => 0x0D, _ => char.ToUpperInvariant(character)
         }, character);
+        if (character is ',' or '.' or '!' or '?') _controller.ReviewInputBoundary();
     }
 
     public void Space(bool fullWidth)
@@ -150,6 +168,15 @@ public sealed class AndroidInputSession : ICompositionHost
 
     public void Key(int code, char? character = null, bool shift = false)
     {
+        if (code is not (0x0D or 0x20) && character is not (>= 'a' and <= 'z') && character is not (',' or '.' or '!' or '?')) _touchInput.Clear();
+        _commitRaw = _controller.RawInput;
+        if (code == 0x08 && !_english && View is { Converting: false } && _canLearnTypos())
+        {
+            if (_commitRaw.Length is >= 4 and <= 32 && _commitRaw.All(char.IsAsciiLetterLower)) _editedWrong ??= _commitRaw;
+        }
+        else if (code is not (0x0D or 0x20) && character is not (>= 'a' and <= 'z'))
+            _editedWrong = null;
+
         if (!_english && !ChoosingBrackets && (code == 0x20 || code == 0x0D && !_preferences().EnterCommitsAsShown) &&
             _controller.TryCommitRomanTypo(code == 0x20 ? " " : "")) return;
         if (!_english && code == 0x20 && !_controller.HasDirectReadingCandidates && _controller.CommitVisibleEnglish(" ")) return;
@@ -169,6 +196,15 @@ public sealed class AndroidInputSession : ICompositionHost
         if (!_english && code == 0x0D && View is { Converting: true })
         {
             _controller.CommitSelectedPrefix(); return;
+        }
+        // The live candidate strip already selects a clause. Preserve that position
+        // when entering explicit conversion instead of restarting at an edge.
+        if (!_english && code is 0x25 or 0x27 &&
+            View is { Converting: false, Clauses: { Count: > 0 } clauses, SelectedClause: >= 0 } live)
+        {
+            var target = shift ? live.SelectedClause :
+                Math.Clamp(live.SelectedClause + (code == 0x25 ? -1 : 1), 0, clauses.Count - 1);
+            if (_controller.SelectClauseAt(clauses.Take(target).Sum(c => c.Length)) && !shift) return;
         }
         _character = character;
         if (_english) { Replay(new KeyEvent(code, 0, false, false, false, NextTime())); _character = null; return; }
@@ -203,8 +239,8 @@ public sealed class AndroidInputSession : ICompositionHost
         else if (shift) { Commit(); CommitText(" "); }
         else Character(' ');
     }
-    public void SelectPrediction(int index) => _controller.CommitPredictionAt(index);
-    public void ForgetPrediction(int index) => _controller.ForgetPredictionAt(index);
+    public void SelectPrediction(int index) { _touchInput.Clear(); _controller.CommitPredictionAt(index); }
+    public void ForgetPrediction(int index) { _touchInput.Clear(); _controller.ForgetPredictionAt(index); }
     public string? ClipboardText
     {
         get
@@ -217,11 +253,14 @@ public sealed class AndroidInputSession : ICompositionHost
 
     public void SelectPosition(int offset)
     {
+        _touchInput.Clear();
         if (!_english && !ChoosingBrackets) _controller.SelectClauseAt(offset);
     }
 
     public void Select(int index)
     {
+        _touchInput.Clear();
+        _commitRaw = _controller.RawInput;
         if (ChoosingBrackets)
         { if (index >= 0 && index < _brackets!.Length) { _bracketIndex = index; CommitBracket(); } return; }
         if (View is not { } view || index < 0 || index >= view.Candidates.Count) return;
@@ -229,9 +268,21 @@ public sealed class AndroidInputSession : ICompositionHost
         else if (!_controller.SelectLiveCandidate(view.SelectedClause, view.Candidates[index])) return;
         _controller.CommitSelectedPrefix();
     }
-    public void Commit() { if (ChoosingBrackets) CommitBracket(); else if (!_controller.CommitVisibleEnglish()) _controller.CommitPending(); }
-    public void Reset() { _controller.Reset(); _controller.ResetContext(); _gate.Abort(); _brackets = null; Katakana = false; View = null; }
-    public void CommitText(string text) => _output(1, text, null);
+    public void Commit() { _commitRaw = _controller.RawInput; if (ChoosingBrackets) CommitBracket(); else if (!_controller.CommitVisibleEnglish()) _controller.CommitPending(); }
+    public void Reset() { _touchInput.Clear(); _typoLearningCancel.Cancel(); _typoLearningCancel.Dispose(); _typoLearningCancel = new(); _editedWrong = _commitRaw = null; _controller.Reset(); _controller.ResetContext(); _gate.Abort(); _brackets = null; Katakana = false; View = null; }
+    public void CommitText(string text)
+    {
+        _touchInput.Clear();
+        if (_editedWrong is { } wrong && _commitRaw is { } raw && _canLearnTypos() && _typoLearning != null &&
+            !_english && !_registeredReading(wrong) && !_registeredReading(raw) && text.Any(c => c is >= 'ぁ' and <= 'ゖ' or >= 'ァ' and <= 'ヺ' or >= '\u3400' and <= '\u9FFF'))
+        {
+            var context = _surrounding?.Invoke();
+            var next = _typoLearning.ObserveAsync(wrong, raw, context?.Before ?? "", context?.After ?? "", _typoLearningCancel.Token);
+            PendingTypoLearning = PendingTypoLearning.IsCompleted ? next : Task.WhenAll(PendingTypoLearning, next);
+        }
+        _editedWrong = null; _commitRaw = null;
+        _output(1, text, null);
+    }
     /// <summary>未確定の入力を確定してから、そのままの文字列を入れる (GODAN の「」など)。</summary>
     public void InsertLiteral(string text) { Commit(); CommitText(text); }
     public void Show(CompositionView view)

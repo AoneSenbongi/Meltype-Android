@@ -105,13 +105,22 @@ public sealed record ReconversionSelection(string Text, string Reading);
 public sealed record CompositionOptions
 {
     public IContextEvaluator? ContextEvaluator { get; init; }
+    public int ContextDebounceMs { get; init; } = 180;
+    public bool ContextOnClauseChange { get; init; }
+    public bool ContextDisplayOnly { get; init; }
+    public bool ContextKanaConversion { get; init; }
+    public bool RuleBasedRomanReview { get; init; }
+    public bool CoherentRomanReview { get; init; }
     public Func<string, bool>? KnownEnglishForTypoReview { get; init; }
+    public Func<string, RomajiFix?>? LearnedRomajiFix { get; init; }
+    public Func<string, IReadOnlyList<string>>? TouchRomajiAlternatives { get; init; }
     public bool FullWidthCommaPeriod { get; init; }
     public Func<char?> Comma { get; init; } = () => null;
     public Func<char?> Period { get; init; } = () => null;
     public Func<bool> LearningEnabled { get; init; } = () => true;
     /// <summary>打ったそばから漢字に変換して見せるか。</summary>
     public Func<bool> LiveConversion { get; init; } = () => false;
+    public int LiveConversionMinLength { get; init; } = 4;
 
     /// <summary>かな漢字変換のエンジン (Windows の CompositionService が Mozc / Microsoft IME を選ぶのに使う)。</summary>
     public Func<Config.ConversionEngine> Engine { get; init; } = () => Config.ConversionEngine.System;
@@ -237,7 +246,6 @@ public sealed record CompositionOptions
     public Func<bool> CursorIntoBrackets { get; init; } = () => false;
     public Func<string> ControlKeyBindings { get; init; } = () => "";
     public Func<bool> CalculatorCandidates { get; init; } = () => false;
-    public Func<bool> LogKeyIntervals { get; init; } = () => false;
     public Func<bool> LaughterAfterKana { get; init; } = () => false;
     public Func<bool> ContextualLearning { get; init; } = () => false;
     public Func<bool> FullWidthSpaceByDefault { get; init; } = () => false;
@@ -303,12 +311,6 @@ public sealed record CompositionOptions
 /// </summary>
 public sealed partial class CompositionController
 {
-    /// <summary>
-    /// ライブ変換は 4 文字以上のかなだけ。短い断片は変換エンジンが的外れな漢字を返しやすい
-    /// (きょ → 居, きょう → 喬) ので、打っている途中はかなのまま見せる。短い語は Space で変換する。
-    /// </summary>
-    private const int LiveConversionMinLength = 4;
-
     /// <summary>候補の一覧の 1 ページの数 (変換ボックス・Linux の候補の一覧と合わせる)。数字キー 1〜9 でこのページの中から選ぶ。</summary>
     internal const int CandidatePageSize = 9;
 
@@ -388,9 +390,10 @@ public sealed partial class CompositionController
         _options = options ?? new CompositionOptions();
         if (_options.ContextEvaluator is { } evaluator)
         {
-            _romanEvaluation = new ContextEvaluation(evaluator);
-            _romanCorrector = _options.RomajiTypos ?? RomajiTypoCorrector.Load(detector.Romaji);
+            _romanEvaluation = new ContextEvaluation(evaluator, debounceMs: _options.ContextDebounceMs);
         }
+        if (_options.ContextEvaluator is not null || _options.RuleBasedRomanReview)
+            _romanCorrector = _options.RomajiTypos ?? RomajiTypoCorrector.Load(detector.Romaji);
         _text.FullWidthCommaPeriod = _options.FullWidthCommaPeriod;
         _text.CommaOverride = _options.Comma;
         _text.PeriodOverride = _options.Period;
@@ -485,8 +488,8 @@ public sealed partial class CompositionController
     /// <summary>入力を確定・変換モードへ移行せず、最後の文節の候補を返す。</summary>
     public CompositionView LiveCandidateView(CompositionView view)
     {
-        if (RomanReviewCurrent) return view with { Candidates = _romanCandidates,
-            SelectedIndex = _romanCandidates.ToList().IndexOf(view.Text), Clauses = [view.Text], SelectedClause = 0 };
+        if (!_options.ContextDisplayOnly && RomanReviewCurrent && !_romanPartial) return view with { Candidates = RomanCandidateTexts,
+            SelectedIndex = RomanCandidateTexts.ToList().IndexOf(view.Text), Clauses = [view.Text], SelectedClause = 0 };
         if (_converting || _text.IsEmpty || _text.Mode != DisplayMode.Auto) return view;
         if (_options.UserDictionary?.Lookup(_text.Raw.ToLowerInvariant()) is { Count: > 0 } exact)
             return view with { Candidates = Distinct([view.Text, .. exact]), SelectedIndex = 0,
@@ -503,7 +506,8 @@ public sealed partial class CompositionController
     /// <summary>ライブ候補を選んだときに変換モードへ移り、候補文字列で選ぶ。</summary>
     public bool SelectLiveCandidate(int clauseIndex, string text)
     {
-        if (SelectRomanCandidate(text)) return true;
+        _candidateCommitText = null;
+        if (!_options.ContextDisplayOnly && SelectRomanCandidate(text)) return true;
         if (_converting || _text.IsEmpty) return false;
         if (_options.UserDictionary?.Lookup(_text.Raw.ToLowerInvariant()).Contains(text) == true)
         {
@@ -515,8 +519,17 @@ public sealed partial class CompositionController
         var clause = clauses[clauseIndex]; Expand(clause);
         var candidate = clause.Candidates.IndexOf(text);
         if (candidate < 0) return false;
+        string? commitText = null;
+        if (_options.ContextDisplayOnly && _romanPartial && RomanReviewCurrent && _romanBaseline is not null && _romanRaw is not null)
+        {
+            var before = clauses.Take(clauseIndex).ToArray();
+            var rawBefore = string.Concat(before.Select(c=>c.Raw ?? c.Reading));
+            var displayedBefore = string.Concat(before.Select(c=>c.Text));
+            if (rawBefore.StartsWith(_romanRaw,StringComparison.Ordinal) && displayedBefore.StartsWith(_romanBaseline,StringComparison.Ordinal))
+                commitText = _romanResult + displayedBefore[_romanBaseline.Length..] + text;
+        }
         _clauses = clauses; _selectedClause = clauseIndex; _converting = true;
-        SelectCandidate(candidate); return true;
+        SelectCandidate(candidate); _candidateCommitText = commitText; return true;
     }
 
     /// <summary>Androidの未確定範囲内の位置から文節を選ぶ。確定は行わない。</summary>
@@ -583,6 +596,8 @@ public sealed partial class CompositionController
         UpdateView();
     }
 
+    public string RawInput => _text.Raw;
+
     /// <summary>自動表示が英語で終わるとき、その表示を保持して確定する。Androidの明示的な確定に使う。</summary>
     public bool CommitVisibleEnglish(string suffix = "")
     {
@@ -603,7 +618,9 @@ public sealed partial class CompositionController
         var remainingRaw = string.Concat(remaining.Select(c => c.IsEnglish ? c.Reading : c.Raw ?? c.Reading));
         _clauses = prefix;
         Learn();
-        CommitText(string.Concat(prefix.Select(c => c.Text)), prefix.All(c => c.IsEnglish),
+        var committed = _candidateCommitText ?? string.Concat(prefix.Select(c => c.Text));
+        _candidateCommitText = null;
+        CommitText(committed, prefix.All(c => c.IsEnglish),
             string.Concat(prefix.Select(c => c.Raw ?? c.Reading)), chosen: true);
         foreach (var character in remainingRaw) _text.Append(character);
         _clauses = remaining;
@@ -660,6 +677,7 @@ public sealed partial class CompositionController
     //追加処理に伴って、整理のための関数追加
     private void ClearComposition()
     {
+        _candidateCommitText = null;
         ResetRomanEvaluation();
         _reconversion = null;
         ++_compositionId;
@@ -707,12 +725,6 @@ public sealed partial class CompositionController
 
     private void HandleKey(KeyEvent e)
     {
-        // 設定「打鍵の間隔を判定の記録に残す」: 間隔 (ミリ秒) と、入力中か (語の途中か) だけ。打った文字は残さない (issue #286)
-        if (_options.LogKeyIntervals() && !e.IsUp && !VirtualKeys.IsModifier(e.Vk))
-        {
-            if (_lastKeyDownTime > 0) Diagnostics.Log.Decision($"打鍵の間隔: {e.TimeMs - _lastKeyDownTime}ms ({(IsComposing ? "入力中" : "入力の始め")})");
-            _lastKeyDownTime = e.TimeMs;
-        }
         var vk = e.Vk;
         if (HandlePendingRomanCommit(e)) return;
         if (e.IsUp)
@@ -1095,8 +1107,6 @@ public sealed partial class CompositionController
     // F6〜F10 (Ctrl+U/I/O/P・無変換・ひらがなキーも) でかな・英字にしたか。次に文字を打ったら確定する。
     private bool _modeByKey;
 
-    // 設定「打鍵の間隔を判定の記録に残す」: 前のキーを押した時刻
-    private long _lastKeyDownTime;
 
     // 続けて打つ前に選んでいた候補 (読み → 文字)。確定するか、変換ボックスを空にするまで。
     private readonly Dictionary<string, string> _keptChoices = [];
@@ -1733,6 +1743,47 @@ public sealed partial class CompositionController
 
     private List<Clause> BuildConversionClauses(bool preferJapanese = false)
     {
+        // Rebuild interactive clauses from an accepted whole-reading repair. Keep original units
+        // intact for editing; do not assign ambiguous raw offsets to the corrected clauses.
+        if (_options.CoherentRomanReview && RomanReviewCurrent && _romanCorrectedReading is { } corrected &&
+            _romanRaw is { } original && (_text.Raw == original ||
+                _text.Raw.Length == original.Length + 1 && _text.Raw[^1] is ',' or '.' or '，' or '。' or '、') &&
+            _detector.Romaji.ConvertLenient(original, true) != corrected)
+        {
+            var repaired = ConvertJapanese(corrected);
+            var result = _romanResult!;
+            var failed = new HashSet<(int, int)>();
+            bool Align(int index, int offset)
+            {
+                if (index == repaired.Count) return offset == result.Length;
+                if (!failed.Add((index, offset))) return false;
+                var clause = repaired[index];
+                Expand(clause);
+                for (var choice = 0; choice < clause.Candidates.Count; choice++)
+                {
+                    var text = clause.Candidates[choice];
+                    if (text.Length == 0 || !result.AsSpan(offset).StartsWith(text, StringComparison.Ordinal)) continue;
+                    if (!Align(index + 1, offset + text.Length)) continue;
+                    clause.Index = choice;
+                    return true;
+                }
+                return false;
+            }
+            if (Align(0, 0))
+            {
+                var offset = 0;
+                foreach (var clause in repaired)
+                {
+                    var chosen = clause.Text;
+                    clause.Raw = CorrectedClauseRaw(offset, clause.Reading.Length);
+                    offset += clause.Reading.Length;
+                    AddOldKana(clause); AddTranslations(clause); AddRawCandidates(clause); MoveEmojiLast(clause);
+                    Prefer(clause, chosen);
+                }
+                if (RomanTail is { Length: > 0 } tail) repaired.Add(new Clause(tail, false, [tail]));
+                return repaired;
+            }
+        }
         var clauses = new List<Clause>();
         var segments = _text.ConversionSegments();
         for (var s = 0; s < segments.Count; s++)
@@ -2605,7 +2656,7 @@ public sealed partial class CompositionController
     private string LiveConvert(string kana)
     {
         // 記号 (～ ! ? …) は数えない。かなが短いうちに記号を足しただけで、的外れな漢字にしない (な～～～ が 名～～～ になっていた: issue #505)
-        if (kana.Count(c => c is (>= 'ぁ' and <= 'ゖ') or (>= 'ァ' and <= 'ヺ') or 'ー') < LiveConversionMinLength) return kana;
+        if (kana.Count(c => c is (>= 'ぁ' and <= 'ゖ') or (>= 'ァ' and <= 'ヺ') or 'ー') < _options.LiveConversionMinLength) return kana;
         var key = string.Join("\u0001", kana, _precedingText, _followingText, _options.History?.Version);
         if (_liveCache.TryGetValue(key, out var cached)) return cached;
         var converted = string.Concat(ConvertJapanese(kana).Select(c => c.Text));
@@ -2616,7 +2667,7 @@ public sealed partial class CompositionController
 
     /// <summary>今の表示 (ライブ変換が有効なら日本語区間は漢字に変換済み)。</summary>
     private string CurrentDisplay(bool final) =>
-        RomanReviewCurrent ? _romanResult! : _text.Display(final, _options.LiveConversion() ? LiveConvert : null);
+        RomanReviewCurrent ? RomanDisplay : _text.Display(final, _options.LiveConversion() ? LiveConvert : null);
 
     // ---- 確定 ----
 
@@ -3047,7 +3098,7 @@ public sealed partial class CompositionController
 
     private void UpdateView()
     {
-        if (_romanEvaluation is not null) RequestRomanEvaluation(_text.Display(false, _options.LiveConversion() ? LiveConvert : null));
+        if (_romanEvaluation is not null || _options.RuleBasedRomanReview) RequestRomanEvaluation(_text.Display(false, _options.LiveConversion() ? LiveConvert : null));
         if (_text.IsEmpty)
         {
             // 英数状態の判定中は何も表示しない (英語ならそのまま出るだけ)。

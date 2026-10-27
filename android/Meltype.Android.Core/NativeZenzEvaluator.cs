@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -43,7 +43,7 @@ public sealed class NativeZenzEvaluator(string modelPath, Action? prepareModel =
 
     public Task<string?> EvaluateAsync(ContextRequest request, CancellationToken cancellation)
     {
-        if (_disposed || request.Candidates.Count is < 2 or > 5 || request.Candidates.Any(c => c.Length is 0 or > 64 ||
+        if (_disposed || request.Candidates.Count < (request.KanaConversion ? 1 : 2) || request.Candidates.Count > 5 || request.Candidates.Any(c => c.Length is 0 or > 64 ||
             c.Any(char.IsControl) || !ZenzCandidateRules.AllowsCandidate(request, c))) return Task.FromResult<string?>(null);
         var copy = request with { Left = request.Left[^Math.Min(64, request.Left.Length)..],
             Right = request.Right[..Math.Min(32, request.Right.Length)], Candidates = request.Candidates.ToArray() };
@@ -59,10 +59,11 @@ public sealed class NativeZenzEvaluator(string modelPath, Action? prepareModel =
                     if (linked.IsCancellationRequested) return null;
                     using var registration = linked.Token.Register(() => Cancel(_handle));
                     var output = new byte[2048];
-                    var count = Generate(_handle, ZenzCandidateRules.Prompt(copy), ZenzCandidateRules.Grammar(copy), output, output.Length, 1400);
+                    var count = Generate(_handle, ZenzCandidateRules.Prompt(copy), copy.KanaConversion ? null : ZenzCandidateRules.Grammar(copy), output, output.Length, 1400);
                     if (count <= 0 || count >= output.Length || linked.IsCancellationRequested) return null;
                     var text = ZenzCandidateRules.LiteralPrefix(copy) + new UTF8Encoding(false, true).GetString(output, 0, count);
-                    return copy.Candidates.Contains(text, StringComparer.Ordinal) ? text : null;
+                    if(copy.KanaConversion)text=text.Trim();
+                    return (copy.KanaConversion ? ZenzCandidateRules.AllowsCandidate(copy,text) : copy.Candidates.Contains(text,StringComparer.Ordinal)) ? text : null;
                 }
                 catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException or
                     IOException or UnauthorizedAccessException or DecoderFallbackException)
@@ -87,7 +88,7 @@ public sealed class NativeZenzEvaluator(string modelPath, Action? prepareModel =
     private static extern IntPtr Create([MarshalAs(UnmanagedType.LPUTF8Str)] string model, int threads);
     [DllImport("meltype_zenz", EntryPoint = "meltype_zenz_generate", CallingConvention = CallingConvention.Cdecl)]
     private static extern int Generate(IntPtr handle, [MarshalAs(UnmanagedType.LPUTF8Str)] string prompt,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string grammar, [Out] byte[] output, int capacity, int timeoutMs);
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string? grammar, [Out] byte[] output, int capacity, int timeoutMs);
     [DllImport("meltype_zenz", EntryPoint = "meltype_zenz_cancel", CallingConvention = CallingConvention.Cdecl)]
     private static extern void Cancel(IntPtr handle);
     [DllImport("meltype_zenz", EntryPoint = "meltype_zenz_destroy", CallingConvention = CallingConvention.Cdecl)]

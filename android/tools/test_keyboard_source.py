@@ -2,6 +2,34 @@
 from pathlib import Path
 import unittest
 class Tests(unittest.TestCase):
+    def test_model_respects_editor_policy_and_existing_features(self):
+        root = Path(__file__).parents[1] / 'Meltype.Android'
+        source = (root / 'KeyboardService.cs').read_text(encoding='utf-8')
+        runtime = (root / 'KeyboardService.Zenz.cs').read_text(encoding='utf-8')
+        self.assertIn('contextEvaluator: ContextEvaluatorForEditor(allowLearning)', source)
+        self.assertIn('if (!allowLearning) return null;', runtime)
+        self.assertIn('_preferences?.Current.LocalZenz != true', runtime)
+        self.assertIn('_zenzEvaluator?.ClearCaches()', runtime)
+        self.assertIn('clipboard: ReadClipboardCandidate', source)
+        self.assertIn('ClipboardInputPolicy.Allows((int)type)', source)
+        self.assertNotIn('LocalZenz = true', source)
+        self.assertNotIn('ClipboardCandidates = false', source)
+        settings = (root / 'MainActivity.cs').read_text(encoding='utf-8')
+        self.assertNotIn('if (feature.Key == "LocalZenz") continue;', settings)
+
+    def test_android_has_no_external_keyboard_only_commands(self):
+        root = Path(__file__).parents[1]
+        self.assertFalse((root / 'Meltype.Android/KeyboardService.Hardware.cs').exists())
+        self.assertFalse((root / 'Meltype.Android.Core/HardwareKeyboard.cs').exists())
+        source = (root / 'Meltype.Android/KeyboardService.cs').read_text(encoding='utf-8')
+        self.assertNotIn('_hardwareEditor', source)
+        self.assertNotIn('_hardwareKeys', source)
+
+    def test_conversion_candidates_precede_predictions(self):
+        source = (Path(__file__).parents[1] / 'Meltype.Android/KeyboardService.cs').read_text(encoding='utf-8')
+        render = source.split('private void RenderCandidates()')[1].split('private void ShowCharacterModes()')[0]
+        self.assertLess(render.index('Text = view.Candidates[index]'), render.index('Text = view.Predictions[index]'))
+
     def test_candidate_scroll_resets_before_signature_shortcut(self):
         source = (Path(__file__).parents[1] / 'Meltype.Android/KeyboardService.cs').read_text(encoding='utf-8')
         output = source.split('private void Output(')[1].split('private void InputSymbol(')[0]

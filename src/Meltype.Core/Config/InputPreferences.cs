@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 using System.Text.Json;
 
 namespace Meltype.Config;
@@ -8,27 +8,26 @@ public sealed record InputPreferences
     public string Comma { get; init; } = "，";
     public string Period { get; init; } = "．";
     public bool LearningEnabled { get; init; } = true;
-    public bool CalculatorCandidates { get; init; }
-    public bool ConsonantAbbreviations { get; init; }
-    public bool ClipboardCandidates { get; init; }
-    public bool Predictions { get; init; }
-    public bool EnglishNamePredictions { get; init; }
+    public bool CalculatorCandidates { get; init; } = true;
+    public bool ConsonantAbbreviations { get; init; } = false;
+    public bool ClipboardCandidates { get; init; } = false;
+    public bool Predictions { get; init; } = true;
+    public bool EnglishNamePredictions { get; init; } = true;
     public bool ShowCandidatesWhileTyping { get; init; } = true;
-    public bool FullWidthParentheses { get; init; }
+    public bool FullWidthParentheses { get; init; } = true;
     public bool CursorIntoBrackets { get; init; } = true;
-    public bool SquareBrackets { get; init; }
-    public bool FullWidthSlash { get; init; }
-    public bool LaughterAfterKana { get; init; }
-    public bool FullWidthSpaceByDefault { get; init; }
-    public bool ShiftSpaceHalfWidth { get; init; }
-    public bool EnterCommitsAsShown { get; init; } = true;
-    public bool FunctionKeysAffectSelectedClause { get; init; }
-    public bool AlphanumericKeyStartsAsTyped { get; init; }
-    public bool EnglishFirstInput { get; init; }
-    public bool ContextualLearning { get; init; }
-    public bool ShowTypedKeys { get; init; }
-    public bool LogKeyIntervals { get; init; }
-    public bool LocalZenz { get; init; }
+    public bool SquareBrackets { get; init; } = false;
+    public bool FullWidthSlash { get; init; } = false;
+    public bool LaughterAfterKana { get; init; } = true;
+    public bool FullWidthSpaceByDefault { get; init; } = false;
+    public bool ShiftSpaceHalfWidth { get; init; } = false;
+    public bool EnterCommitsAsShown { get; init; } = false;
+    public bool FunctionKeysAffectSelectedClause { get; init; } = false;
+    public bool AlphanumericKeyStartsAsTyped { get; init; } = false;
+    public bool EnglishFirstInput { get; init; } = false;
+    public bool ContextualLearning { get; init; } = false;
+    public bool ShowTypedKeys { get; init; } = false;
+    public bool LocalZenz { get; init; } = true;
     public InputPreferences Validate() => this with
     {
         Comma = Comma is "、" or "，" or "," ? Comma : "，",
@@ -48,12 +47,18 @@ public sealed class InputPreferenceStore(string path)
                 try
                 {
                     if (!File.Exists(path)) return new();
-                    if (new FileInfo(path).Length > 4096) return new() { LearningEnabled = false };
-                    return (JsonSerializer.Deserialize<InputPreferences>(File.ReadAllText(path)) ??
-                        new InputPreferences { LearningEnabled = false }).Validate();
+                    if (new FileInfo(path).Length > 4096) return new() { LearningEnabled = false, LocalZenz = false };
+                    using var document = JsonDocument.Parse(File.ReadAllText(path));
+                    if (document.RootElement.ValueKind != JsonValueKind.Object)
+                        return new() { LearningEnabled = false, LocalZenz = false };
+                    var preferences = document.RootElement.Deserialize<InputPreferences>() ??
+                        new InputPreferences { LearningEnabled = false, LocalZenz = false };
+                    if (!document.RootElement.TryGetProperty(nameof(InputPreferences.LocalZenz), out _))
+                        preferences = preferences with { LocalZenz = false };
+                    return preferences.Validate();
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
-                { return new() { LearningEnabled = false }; }
+                { return new() { LearningEnabled = false, LocalZenz = false }; }
             }
         }
     }
@@ -98,7 +103,6 @@ public static class InputFeatureSettings
         new("EnglishFirstInput", "入力操作", "英字を中心に入力する", p => p.EnglishFirstInput, (p, value) => p with { EnglishFirstInput = value }),
         new("ContextualLearning", "学習・表示", "英語・日本語の学習を前の文脈で分ける", p => p.ContextualLearning, (p, value) => p with { ContextualLearning = value }),
         new("ShowTypedKeys", "学習・表示", "入力したローマ字を候補欄に表示する", p => p.ShowTypedKeys, (p, value) => p with { ShowTypedKeys = value }),
-        new("LogKeyIntervals", "学習・表示", "打鍵の間隔だけを記録する（実験）", p => p.LogKeyIntervals, (p, value) => p with { LogKeyIntervals = value }),
-        new("LocalZenz", "端末内AI", "未変換の誤字を見直す", p => p.LocalZenz, (p, value) => p with { LocalZenz = value }),
+        new("LocalZenz", "端末内AI", "zenzで文脈変換・誤字補正する", p => p.LocalZenz, (p, value) => p with { LocalZenz = value }),
     ];
 }

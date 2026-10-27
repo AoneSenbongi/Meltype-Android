@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 using Meltype.AndroidCore;
 using Meltype.Composition;
 
@@ -30,6 +30,20 @@ if (args is ["--audit-personal-typos", var model, var analysis, var report])
 if (typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.TypoTrainingStore") != null ||
     typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.TypoEditCapture") != null)
     throw new Exception("Release contains typo-acquisition capability");
+if (typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.HardwareKeyboard") is not null)
+    throw new Exception("Android still includes external-keyboard-only commands");
+ReleaseDefaultsTests.Run();
+MozcReuseTests.Run();
+KeyEventInputTests.Run();
+RuleBasedCorrectionTests.WholeWordAfterPrefix();
+RuleBasedCorrectionTests.Run();
+TouchCorrectionTests.Run();
+NeuralConversionTests.Run();
+CandidateDisplayTests.Run();
+ClauseReviewTests.Run();
+AndroidUpdateTests.Run();
+PersonalTypoLearningTests.Run();
+LiveConversionTests.Run();
 ModelNumberTests.Run();
 ModelBoundaryTests.Run();
 MozcCandidateTests.Run();
@@ -39,6 +53,8 @@ Feature130Tests.Run();
 AdaptiveInputTests.Run();
 PersonalRomajiTests.Run();
 ConversionSelectionTests.Run();
+ConversionSelectionTests.ArrowTests();
+ConversionSelectionTests.InitialResizeTests();
 ConversionSelectionTests.ResizeTests();
 ConversionSelectionTests.MisclassifiedEnglishTests();
 ConversionSelectionTests.SpaceTests();

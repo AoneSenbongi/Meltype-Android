@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 using Meltype.AndroidCore;
 using Meltype.Composition;
 using Meltype.Config;
@@ -41,10 +41,15 @@ internal static class AndroidZenzTests
     { if (expected != actual) throw new Exception($"zenz: expected {expected}, got {actual}"); }
     public static void Run()
     {
+        var promptModel = new Model(); var promptEditor = new Editor(promptModel).Init();
+        promptEditor.Type("onegaishimsu"); promptEditor.Poll(65);
+        if(promptModel.Requests.Count != 0) throw new Exception("Android zenz reviewed an unfinished clause after an idle delay");
+        promptEditor.Session.Character(','); promptEditor.Poll(0);
+        Equal("お願いします，",promptEditor.Session.View?.Text);
         var model = new Model(); var editor = new Editor(model).Init();
-        editor.Type("onegaishimsu"); editor.Poll();
-        Equal("お願いします", editor.Session.View?.Text);
-        editor.Session.Key(0x0D); Equal("お願いします", editor.Document);
+        editor.Type("onegaishimsu"); editor.Session.Character(','); editor.Poll();
+        Equal("お願いします，", editor.Session.View?.Text);
+        editor.Session.Key(0x0D); Equal("お願いします，", editor.Document);
         if (!model.Requests.Any(r => r.RomanTypo && r.Candidates.Contains("お願いします"))) throw new Exception("No bounded typo request");
 
         foreach (var literal in new[] { "meeting", "github", "camera", "https://example.com", "ps5", "ABC" })
@@ -75,9 +80,9 @@ internal static class AndroidZenzTests
         foreach (var edit in new[] { "reset", "back", "escape", "manual" })
         {
             var delayed = new Model(true); var stale = new Editor(delayed).Init();
-            stale.Type("onegaishimsu"); stale.Poll();
+            stale.Type("onegaishimsu"); stale.Session.Character(','); stale.Poll();
             if (edit == "reset") stale.Session.Reset();
-            else stale.Session.Key(edit == "back" ? 0x08 : edit == "escape" ? 0x1B : 0x79);
+            else { stale.Session.Key(edit == "back" ? 0x08 : edit == "escape" ? 0x1B : 0x79); if(edit=="back")stale.Session.Key(0x08); }
             var before = stale.Session.View?.Text;
             delayed.Completion.SetResult("お願いします"); stale.Poll(800);
             Equal(before, stale.Session.View?.Text); Equal("", stale.Document);
@@ -102,7 +107,7 @@ internal static class AndroidZenzTests
         editing.Session.Key(0x08); editing.Session.Key(0x79); Equal(reference.Session.View?.Text, editing.Session.View?.Text);
         var choosing = new Editor(new Model()).Init(); choosing.Type("onegaishimsu");
         var original = choosing.Session.View!.Text; choosing.Poll();
-        choosing.Session.Select(choosing.Session.View!.Candidates.ToList().IndexOf(original)); Equal(original, choosing.Document);
+        choosing.Session.Select(choosing.Session.View!.Candidates.ToList().IndexOf(choosing.Session.View.Clauses!.Last())); Equal(original, choosing.Document);
         var invalid = new Editor(new Model { Forced = "候補にない文章" }).Init(); invalid.Type("onegaishimsu");
         original = invalid.Session.View!.Text; invalid.Poll(); Equal(original, invalid.Session.View?.Text);
 
@@ -120,8 +125,8 @@ internal static class AndroidZenzTests
             var memory = new LanguageMemory(memoryPath); memory.Remember("onegaishimsu", true); memory.Remember("onegaishimsu", true);
             var saved = File.ReadAllText(memoryPath);
             var learned = new Editor(new Model(), stateDirectory: testDirectory, learning: true).Init();
-            learned.Type("onegaishimsu"); learned.Poll(); Equal("お願いします", learned.Session.View?.Text);
-            learned.Session.Key(0x0D); Equal("お願いします", learned.Document); Equal(saved, File.ReadAllText(memoryPath));
+            learned.Type("onegaishimsu"); learned.Session.Character(','); learned.Poll(); Equal("お願いします,", learned.Session.View?.Text);
+            learned.Session.Key(0x0D); Equal("お願いします,", learned.Document); Equal(saved, File.ReadAllText(memoryPath));
             memory.Remember("onegaishimsu", true, true);
             var explicitModel = new Model(); var explicitEnglish = new Editor(explicitModel, stateDirectory: testDirectory, learning: true).Init();
             explicitEnglish.Type("onegaishimsu"); original = explicitEnglish.Session.View!.Text;

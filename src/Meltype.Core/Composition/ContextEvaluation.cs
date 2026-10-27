@@ -5,7 +5,7 @@ namespace Meltype.Composition;
 
 /// <summary>A conversion target and its context. Candidates preserve English and protected spans.</summary>
 public sealed record ContextRequest(string Reading, string Left, string Right, IReadOnlyList<string> Candidates,
-    bool RomanTypo = false, ModelNumberBoundary? ModelBoundary = null);
+    bool RomanTypo = false, ModelNumberBoundary? ModelBoundary = null, bool KanaConversion = false);
 
 public interface IContextEvaluator
 {
@@ -28,7 +28,7 @@ public sealed class ContextEvaluation(IContextEvaluator evaluator, int debounceM
         var key = JsonSerializer.Serialize(request);
         if (_key == key) return;
         Reset(); _key = key;
-        if (request.Candidates.Count < 2 || request.Reading.Length > 100) return;
+        if (request.Candidates.Count < (request.KanaConversion ? 1 : 2) || request.Reading.Length > 100) return;
         _request = request with { Candidates = request.Candidates.ToArray() };
         _due = now + debounceMs;
     }
@@ -55,7 +55,7 @@ public sealed class ContextEvaluation(IContextEvaluator evaluator, int debounceM
             Observe(task); return null;
         }
         var result = task.Result;
-        return result is not null && _request.Candidates.Contains(result, StringComparer.Ordinal) ? result : null;
+        return result is not null && (_request.KanaConversion ? ZenzCandidateRules.AllowsCandidate(_request,result) : _request.Candidates.Contains(result,StringComparer.Ordinal)) ? result : null;
     }
 
     private static void Observe(Task task) => _ = task.ContinueWith(t => _ = t.Exception,
@@ -77,15 +77,20 @@ public static class ZenzCandidateRules
     {
         if (request.ModelBoundary is { } boundary)
         {
-            if (request.RomanTypo || request.Reading.Length != 0 || !boundary.IsValid()) return false;
+            if (request.KanaConversion || request.RomanTypo || request.Reading.Length != 0 || !boundary.IsValid()) return false;
             var baseline = boundary.Model + boundary.KanaSuffix;
             var literal = boundary.Model + boundary.RawSuffix;
             return request.Candidates.SequenceEqual(new[] { baseline, literal }) &&
                 (candidate == baseline || candidate == literal);
         }
+        if (request.KanaConversion)
+            return !request.RomanTypo && request.Candidates.Count==1 && request.Reading.Length is >0 and <=64 &&
+                request.Reading.All(c=>c is >= 'ぁ' and <= 'ゖ' or 'ー') && candidate.Length is >0 and <=64 &&
+                candidate.All(c=>!char.IsControl(c) && !char.IsWhiteSpace(c)) &&
+                PreservesLiteralText(request.Candidates[0],candidate);
         if (!request.RomanTypo) return PreservesLiteralText(request.Candidates[0], candidate);
         static bool Japanese(char c) => c is >= 'ぁ' and <= 'ゖ' or >= 'ァ' and <= 'ヺ' or 'ー'
-            or >= '\u3400' and <= '\u4DBF' or >= '\u4E00' and <= '\u9FFF';
+            or '々' or 'ゝ' or 'ゞ' or 'ヽ' or 'ヾ' or >= '\u3400' and <= '\u4DBF' or >= '\u4E00' and <= '\u9FFF';
         var original = request.Candidates[0];
         return original.Length is >= 4 and <= 64 && original.Any(char.IsAsciiLetterLower) &&
             original.All(c => char.IsAsciiLetterLower(c) || Japanese(c)) &&
@@ -96,12 +101,12 @@ public static class ZenzCandidateRules
     public static bool PreservesLiteralText(string baseline, string candidate)
     {
         static string Literal(string value) => string.Concat(value.Where(c =>
-            !(c is >= 'ぁ' and <= 'ゖ' or >= 'ァ' and <= 'ヺ' or >= '\u3400' and <= '\u4DBF' or >= '\u4E00' and <= '\u9FFF')));
+            !(c is >= 'ぁ' and <= 'ゖ' or >= 'ァ' and <= 'ヺ' or '々' or 'ゝ' or 'ゞ' or 'ヽ' or 'ヾ' or >= '\u3400' and <= '\u4DBF' or >= '\u4E00' and <= '\u9FFF')));
         return Literal(baseline) == Literal(candidate);
     }
     public static string LiteralPrefix(ContextRequest request)
     {
-        if (request.Candidates.Count == 0) return "";
+        if (request.KanaConversion || request.Candidates.Count == 0) return "";
         var first = request.Candidates[0];
         var length = 0;
         while (length < first.Length && first[length] < 128 &&
@@ -110,7 +115,7 @@ public static class ZenzCandidateRules
     }
 
     public static string Prompt(ContextRequest request) =>
-        (request.Left.Length == 0 ? "" : "\uEE02" + request.Left[^Math.Min(256, request.Left.Length)..]) +
+        (request.Left.Length == 0 ? (request.KanaConversion ? "\uEE02。" : "") : "\uEE02" + request.Left[^Math.Min(256, request.Left.Length)..]) +
         (request.Right.Length == 0 ? "" : "\uEE07" + request.Right[..Math.Min(128, request.Right.Length)]) +
         "\uEE00" + CompositionText.ToKatakana(request.Reading) + "\uEE01" + LiteralPrefix(request);
 
