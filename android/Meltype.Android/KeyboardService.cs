@@ -62,6 +62,7 @@ public sealed partial class KeyboardService : InputMethodService
     private bool _shownKatakana, _choosingBrackets;
     private readonly List<(Button Key, char Letter)> _letters = [];
     private bool _english, _restricted, _ready;
+    private int _inputViewGeneration;
     private bool _preeditActive;
     private int _generation;
     private int _jobGeneration;
@@ -259,6 +260,10 @@ public sealed partial class KeyboardService : InputMethodService
         row.AddView(cell, new LinearLayout.LayoutParams(0, Dp(height), weight)); return key;
     }
     public override bool OnEvaluateFullscreenMode() => false;
+
+    public override bool OnEvaluateInputViewShown() =>
+        PasswordKeyboardPolicy.RequiresSoftwareKeyboard((int)(CurrentInputEditorInfo?.InputType ?? InputTypes.Null))
+        || base.OnEvaluateInputViewShown();
     public override void OnStartInput(EditorInfo? attribute, bool restarting)
     {
         base.OnStartInput(attribute, restarting);
@@ -306,12 +311,21 @@ public sealed partial class KeyboardService : InputMethodService
     public override void OnStartInputView(EditorInfo? info, bool restarting)
     {
         base.OnStartInputView(info, restarting);
+        var generation = ++_inputViewGeneration;
+        if (PasswordKeyboardPolicy.RequiresSoftwareKeyboard((int)(info?.InputType ?? InputTypes.Null)))
+            Window?.Window?.DecorView?.Post(() =>
+            {
+                if (OperatingSystem.IsAndroidVersionAtLeast(28) && generation == _inputViewGeneration &&
+                    PasswordKeyboardPolicy.RequiresSoftwareKeyboard((int)(CurrentInputEditorInfo?.InputType ?? InputTypes.Null)))
+                    RequestShowSelf(ShowFlags.Implicit);
+            });
         RefreshClipboardSuggestion(offer: true);
         Status();
     }
 
     public override void OnFinishInput()
     {
+        ++_inputViewGeneration;
         _consumedKeys.Clear();_keyTextEditor=false;
         CancelTouches();
         CurrentInputConnection?.FinishComposingText();
@@ -323,6 +337,7 @@ public sealed partial class KeyboardService : InputMethodService
     }
     public override void OnFinishInputView(bool finishingInput)
     {
+        ++_inputViewGeneration;
         if (finishingInput) _clipboardSuggestion.Dismiss();
         CancelTouches(); _shiftState.Reset();
         _english = false;

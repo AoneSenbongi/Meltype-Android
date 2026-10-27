@@ -32,6 +32,7 @@ if (typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.TypoTraini
     throw new Exception("Release contains typo-acquisition capability");
 if (typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.HardwareKeyboard") is not null)
     throw new Exception("Android still includes external-keyboard-only commands");
+PasswordKeyboardTests.Run();
 ReleaseDefaultsTests.Run();
 MozcReuseTests.Run();
 KeyEventInputTests.Run();
