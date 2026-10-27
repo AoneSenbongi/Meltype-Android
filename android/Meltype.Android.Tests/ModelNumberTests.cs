@@ -26,7 +26,7 @@ internal static class ModelNumberTests
         {
             var committed = new List<string>();
             var session = new AndroidInputSession(new Plain(), _ => [],
-                (op, text, _) => { if (op == 1) committed.Add(text); }, learningAllowed: false);
+                (op, text, _) => { if (op == 1) committed.Add(text); }, () => new InputPreferences { FullWidthParentheses = false }, learningAllowed: false);
             foreach (var c in raw) session.Character(c);
             if (session.View?.Text != expected)
                 throw new Exception($"Model preview {raw}: expected '{expected}', got '{session.View?.Text}'");
@@ -88,7 +88,7 @@ internal static class ModelNumberTests
             }
             var committed = new List<string>();
             var session = new AndroidInputSession(new Plain(), _ => [],
-                (op, text, _) => { if (op == 1) committed.Add(text); }, learningAllowed: false);
+                (op, text, _) => { if (op == 1) committed.Add(text); }, () => new InputPreferences { FullWidthParentheses = false }, learningAllowed: false);
             foreach (var c in raw) session.Character(c);
             Check("preview", session.View?.Text);
             session.Commit(); Check("commit", string.Concat(committed));

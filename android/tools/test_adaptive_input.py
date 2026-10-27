@@ -59,13 +59,13 @@ if not args.skip_prediction:
     start(True); type_word('arigatou'); baseline=text()
     results['baseline']=baseline
     for personal in (True,False):
+        start(personal); type_word('arigatiu'); literal=text()
         start(personal); type_word('arigat')
         nodes=tree(); x1,y1,x2,y2=bounds(find('i',nodes))
         adb('shell','input','tap',x2-1,(y1+y2)//2)
         time.sleep(.2); type_word('u')
         results['border_'+str(personal)]=text()
-    assert results['border_True']==baseline,results
-    assert results['border_False']!=baseline,results
+        assert text()==literal,results
 
 start(True); type_word('chinamini'); correct=text()
 start(True); type_word('chinamoni'); results['typo_live']=text()
@@ -91,4 +91,4 @@ OUT.joinpath('runtime-verification.json').write_text(json.dumps(results,ensure_a
 OUT.joinpath('after-next-clause.png').write_bytes(adb('exec-out','screencap','-p'))
 print(json.dumps(results,ensure_ascii=False))
 print('PASS: live/Enter typo correction, private-field protection, and next-clause scroll reset')
-if not args.skip_prediction: print('PASS: predicted border')
+if not args.skip_prediction: print('PASS: boundary touch keeps original key before contextual review')

@@ -15,13 +15,17 @@ internal static class Feature130Tests
     static void Type(AndroidInputSession s, string raw) { foreach (var c in raw) s.Character(c); }
     public static void Run()
     {
+        Require(!InputFeatureSettings.All.Any(f => f.Key == "LogKeyIntervals"), "Unrequested key timing setting remains visible");
+        Require(typeof(InputPreferences).GetProperty("LogKeyIntervals") == null, "Removed key timing preference remains");
+        Require(typeof(CompositionOptions).GetProperty("LogKeyIntervals") == null, "Removed key timing recorder remains");
+        Require(!System.Text.Json.JsonSerializer.Deserialize<InputPreferences>("{\"LogKeyIntervals\":true,\"LearningEnabled\":false}")!.LearningEnabled, "Legacy timing flag broke unrelated preferences");
         Require(!InputFeatureSettings.All.Any(f => f.Key.StartsWith("Esc")), "Removed cancel settings remain visible");
         var legacy = System.Text.Json.JsonSerializer.Deserialize<InputPreferences>("{\"EscStepsBack\":true,\"EscRevertsSelectedClause\":true,\"LearningEnabled\":false,\"ShowTypedKeys\":true}")!;
         Require(!legacy.LearningEnabled && legacy.ShowTypedKeys, "Old cancel fields broke remaining settings");
         Require(!System.Text.Json.JsonSerializer.Serialize(legacy).Contains("Esc"), "Removed cancel fields remain serialized");
         var defaults = new InputPreferences();
-        Require(!defaults.LocalZenz, "zenz must be OFF by default");
-        Require(!System.Text.Json.JsonSerializer.Deserialize<InputPreferences>("{}")!.LocalZenz, "Existing settings without zenz must remain OFF");
+        Require(defaults.LocalZenz, "Selected release profile must enable the model by default");
+        Require(System.Text.Json.JsonSerializer.Deserialize<InputPreferences>("{}")!.LocalZenz, "Default record must match the release profile");
         foreach (var feature in InputFeatureSettings.All)
         {
             var changed = feature.Write(defaults, !feature.Read(defaults));
@@ -83,11 +87,6 @@ internal static class Feature130Tests
                 surrounding:()=> ("I want ",null),stateDirectory:folder);
             Type(contextual,"nihongo");contextual.Key(0x79);contextual.Commit();
             Require(new LanguageMemory(Path.Combine(folder,"language-memory.json")).Entries().Any(e=>e.Context=="英語" || e.Key?.EndsWith("@e")==true),"Context learning was not saved separately");
-            var before=Meltype.Diagnostics.Log.Snapshot().Count(e=>e.Message.StartsWith("打鍵の間隔:"));
-            var timing=new AndroidInputSession(new Plain(),_=>[],(_,_,_)=>{},()=>new InputPreferences{LogKeyIntervals=true});Type(timing,"nihongo");
-            var recorded=Meltype.Diagnostics.Log.Snapshot().Count(e=>e.Message.StartsWith("打鍵の間隔:"));Require(recorded>before,"Key intervals were not recorded");
-            timing=new AndroidInputSession(new Plain(),_=>[],(_,_,_)=>{},()=>new InputPreferences{LogKeyIntervals=true},false);Type(timing,"secret");
-            Require(Meltype.Diagnostics.Log.Snapshot().Count(e=>e.Message.StartsWith("打鍵の間隔:"))==recorded,"Private editor recorded key timing");
             var phrases=new PhraseHistory(Path.Combine(folder,"phrase-history.tsv"));phrases.Remember("にほんごのぶんしょう","日本語の文章");
             var history=new AndroidInputSession(new Plain(),_=>[],(_,_,_)=>{},()=>new InputPreferences{Predictions=true},stateDirectory:folder);
             Type(history,"nihongo");var index=history.View!.Predictions!.ToList().IndexOf("日本語の文章");

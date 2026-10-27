@@ -18,19 +18,16 @@ internal static class AdaptiveInputTests
         if (prediction.Probability("tim", 'e') != 1 || prediction.Probability("", 'e') != 0 ||
             prediction.Probability("unknown", 'e') != 0) throw new Exception("Next-key prefix prediction failed");
         var keys = new[] { new TouchKey('w', 0, 0, 40, 54), new TouchKey('e', 40, 0, 40, 54) };
-        if (AdaptiveKeyTarget.Choose(keys, 38, 27, c => prediction.Probability("tim", c)) != 'e' ||
-            AdaptiveKeyTarget.Choose(keys, 20, 27, c => prediction.Probability("tim", c)) != 'w' ||
-            AdaptiveKeyTarget.Choose(keys, 38, 27, _ => 0) != 'w' ||
-            AdaptiveKeyTarget.Choose(keys, 90, 27, _ => 1) != null)
-            throw new Exception("Adaptive hit bounds stole a center, empty space, or ignored prediction");
-        foreach (var (x, expected) in new[] { (30f, 'e'), (28f, 'e'), (27f, 'w'), (20f, 'w') })
-            if (AdaptiveKeyTarget.Choose(keys, x, 27, c => prediction.Probability("tim", c)) != expected)
-                throw new Exception("Expanded prediction boundary failed at " + x);
-        if (AdaptiveKeyTarget.Choose(keys, 30, 27, _ => .5) != 'w' ||
-            AdaptiveKeyTarget.Choose(keys, 30, 27, _ => .8) != 'w' ||
-            AdaptiveKeyTarget.Choose([new('w', 0, 0, 40, 54), new('e', 40, 54, 40, 54)], 38, 27, c => c == 'e' ? 1 : 0) != 'w')
-            throw new Exception("Expanded boundary ignored probability, ties or row separation");
-        Console.WriteLine("PASS: prefix prediction and bounded touch adjustment");
+        foreach (var (x, ambiguous) in new[] { (38f, true), (28f, true), (27f, false), (20f, false) })
+        {
+            var touch = AdaptiveKeyTarget.Capture(keys, x, 27, c => prediction.Probability("tim", c));
+            if (touch?.Original.Letter != 'w' || touch.Alternatives.Any() != ambiguous)
+                throw new Exception("Touch evidence changed original key or boundary at " + x);
+        }
+        if (AdaptiveKeyTarget.Capture(keys, 90, 27, _ => 1) != null ||
+            AdaptiveKeyTarget.Capture([new('w',0,0,40,54),new('e',40,54,40,54)],38,27,_=>1)!.Alternatives.Count != 0)
+            throw new Exception("Touch evidence included a gap or a different row");
+        Console.WriteLine("PASS: prefix prediction and bounded deferred touch evidence");
     }
     sealed class Plain : IKanjiConverter
     {

@@ -14,6 +14,18 @@ public sealed class AndroidMozcConverter : IKanjiConverter, ILearningConverter
     private bool CanLearn => _learning && LearningEnabled();
     private readonly object _gate = new();
     private readonly Dictionary<string, IReadOnlyList<string>> _candidates = new(StringComparer.Ordinal);
+    private sealed record SavedConversion(ConversionClause[] Clauses, Dictionary<string, string[]> Candidates);
+    private readonly Dictionary<(string Reading, string? Context, bool SingleClause), SavedConversion> _results = [];
+    private bool? _resultLearningMode;
+
+    private void CheckLearningMode()
+    {
+        var mode = CanLearn;
+        if (_resultLearningMode == mode) return;
+        _resultLearningMode = mode;
+        _results.Clear();
+        _candidates.Clear();
+    }
 
     public AndroidMozcConverter(Func<byte[], byte[]> transport, bool learning = true) { _transport = transport; _learning = learning; }
 
@@ -24,6 +36,7 @@ public sealed class AndroidMozcConverter : IKanjiConverter, ILearningConverter
     {
         lock (_gate)
         {
+            CheckLearningMode();
             if (_candidates.TryGetValue(reading, out var cached)) return cached;
             var deadline = Stopwatch.StartNew();
             var clauses = ConvertCore(reading, null, deadline);
@@ -40,6 +53,14 @@ public sealed class AndroidMozcConverter : IKanjiConverter, ILearningConverter
     private IReadOnlyList<ConversionClause>? ConvertCore(string hiragana, string? context, Stopwatch? operationDeadline = null, bool singleClause = false)
     {
         if (hiragana.Length is 0 or > 100 || hiragana.Any(char.IsControl)) return null;
+        CheckLearningMode();
+        var key = (hiragana, context, singleClause);
+        if (_results.TryGetValue(key, out var saved))
+        {
+            _candidates.Clear();
+            foreach (var pair in saved.Candidates) _candidates[pair.Key] = pair.Value.ToArray();
+            return saved.Clauses.ToArray();
+        }
         ulong session = 0;
         _candidates.Clear();
         var deadline = operationDeadline ?? Stopwatch.StartNew();
@@ -90,6 +111,8 @@ public sealed class AndroidMozcConverter : IKanjiConverter, ILearningConverter
                 if (words.Count == 0) words = output.Message(6).Groups(3).Select(p => p.Text(5)).Where(t => t.Length > 0).ToList();
                 _candidates[clauses[index].Reading] = words.Select(w => RestoreSymbolWidth(w, clauses[index].Reading)).Prepend(clauses[index].Text).Distinct().ToArray();
             }
+            if (_results.Count >= 32) _results.Clear();
+            _results[key] = new(clauses.ToArray(), _candidates.ToDictionary(p => p.Key, p => p.Value.ToArray(), StringComparer.Ordinal));
             return clauses;
         }
         catch (Exception ex)
@@ -144,6 +167,8 @@ public sealed class AndroidMozcConverter : IKanjiConverter, ILearningConverter
         if (reading.Length is 0 or > 100 || reading.Any(char.IsControl) || clauses.Any(c => c.Text.Length == 0 || c.Text.Any(char.IsControl))) return false;
         lock (_gate)
         {
+            _results.Clear();
+            _candidates.Clear();
             if (!CanLearn) return false;
             ulong session = 0;
             var deadline = Stopwatch.StartNew();

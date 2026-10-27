@@ -67,7 +67,9 @@ public sealed class ClipboardSuggestion(long lastTimestamp = 0)
     public string? Text { get; private set; }
     public void Open(long timestamp, string? text)
     {
-        Text = timestamp > 0 && timestamp != LastTimestamp ? text : null;
+        if (timestamp <= 0 || string.IsNullOrWhiteSpace(text)) { Text = null; return; }
+        if (timestamp == LastTimestamp) return;
+        Text = text;
         LastTimestamp = timestamp;
     }
     public void Dismiss() => Text = null;

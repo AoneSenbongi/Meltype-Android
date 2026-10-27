@@ -83,15 +83,17 @@ if not options.clipboard_only:
     baseline = editor()
     for personal in (True, False):
         start(personal)
+        type_word('arigatiu')
+        literal = editor()
+        start(personal)
         type_word('arigat')
         x1, y1, x2, y2 = bounds(find('i'))
         adb('shell', 'input', 'tap', int(x2-(x2-x1)*.25), (y1+y2)//2)
         time.sleep(.2)
         type_word('u')
         results['border_'+str(personal)] = editor()
-    assert results['border_True'] == baseline, results
-    assert results['border_False'] != baseline, results
-    print('PASS: predicted adjacent border adjusts only in allowed editor', flush=True)
+        assert editor() == literal, results
+    print('PASS: boundary touch keeps original key before contextual review', flush=True)
 
     start()
     type_word('warewarehautyuujinda')
