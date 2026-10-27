@@ -280,10 +280,6 @@ public sealed class Settings
      Description("数字と + - * / ( ) だけの式を打って Space で変換すると、計算した結果 (1+2*3 → 7) と「式=結果」を候補に出します。")]
     public bool CalculatorCandidates { get; set; }
 
-    [Category("1. 全般"), DisplayName("打鍵の間隔を判定の記録に残す (実験)"),
-     Description("判定の記録 (ログ) に、キーとキーの間の時間 (ミリ秒) だけを残します (打った文字は残しません)。英語と日本語の見分けに打鍵のリズムが使えるかを調べるための実験用です。")]
-    public bool LogKeyIntervals { get; set; }
-
     [Category("1. 全般"), DisplayName("かな + w を笑い (ねw・さw) にする"),
      Description("ね・さ などの 1 文字のかなの後ろの w を、英単語 (new・saw) にせず笑いの w にします (なるほどnew → なるほどねw)。英単語の new や saw を打つ人は OFF のままにしてください。")]
     public bool LaughterAfterKana { get; set; }

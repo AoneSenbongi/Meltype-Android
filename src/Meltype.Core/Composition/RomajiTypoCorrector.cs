@@ -136,7 +136,30 @@ public sealed class RomajiTypoCorrector
     /// 小文字の英字の並び letters (ローマ字として読めない子音を含む) を直す。直せなければ null。
     /// final でなければ、まだ打っている途中 (語末の子音はそのまま残してよい)。
     /// </summary>
-    public RomajiFix? Fix(string letters, bool final)
+    public RomajiFix? Fix(string letters, bool final) => FixCore(letters, final, null);
+
+    // Keep plausible competing readings for one contextual decision, without weakening Fix.
+    public IReadOnlyList<RomajiFix> Suggestions(string letters, bool final)
+    {
+        var suggestions = new List<RomajiFix>();
+        var fix = FixCore(letters, final, suggestions);
+        if (suggestions.Count == 0 && fix is { } single) suggestions.Add(single);
+        return suggestions;
+    }
+
+    public IReadOnlyList<RomajiFix> TouchSuggestions(string letters, IReadOnlyList<string> alternatives)
+    {
+        if (alternatives.Count == 0) return [];
+        // A known reading is not evidence of a typo. Explicit learned edits use their separate path.
+        if (IsKnownReading(_romaji.ConvertLenient(letters, true))) return [];
+        return alternatives.Where(s => s.Length == letters.Length && s.All(char.IsAsciiLetterLower) &&
+                s.Where((c, i) => c != letters[i]).Count() == 1 && FirstUnreadable(s, true) < 0)
+            .Select(s => new RomajiFix(letters, s, _romaji.ConvertLenient(s, true)))
+            .Where(f => f.Kana.All(c => c is >= 'ぁ' and <= 'ゖ' or 'ー') && IsKnownReading(f.Kana))
+            .DistinctBy(f => f.Kana).Take(3).ToArray();
+    }
+
+    private RomajiFix? FixCore(string letters, bool final, List<RomajiFix>? suggestions)
     {
         var first = FirstUnreadable(letters, final);
         // 語頭の打ち間違いはまれで、英字 1 文字 + 日本語 (sだけが) のこともあるので見ない。
@@ -218,6 +241,12 @@ public sealed class RomajiTypoCorrector
         }
         if (ranked.Count == 0) return null;
         ranked.Sort((a, b) => a.Cost.CompareTo(b.Cost));
+        if (suggestions is not null)
+        {
+            var originalCost = Segment(_romaji.ConvertLenient(letters, final), -1).Cost;
+            suggestions.AddRange(ranked.Where(c => c.Cost < originalCost && c.Cost <= ranked[0].Cost + 0.6)
+                .DistinctBy(c => c.Kana).Take(2).Select(c => new RomajiFix(letters, c.Letters, c.Kana)));
+        }
         // 同じくらい自然な直し方が 2 つあるなら、どちらか分からないので直さない。
         if (ranked.Count > 1 && ranked[1].Cost - ranked[0].Cost < 0.2 && ranked[1].Kana != ranked[0].Kana) return null;
         // 直す前より自然でなければ直さない (読めない子音を英字 1 文字として数える)。

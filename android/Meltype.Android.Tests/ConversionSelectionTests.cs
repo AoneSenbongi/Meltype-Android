@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 using Meltype.AndroidCore;
 using Meltype.Composition;
 internal static class ConversionSelectionTests
@@ -21,7 +21,7 @@ internal static class ConversionSelectionTests
             foreach(var action in new[]{"enter","space","blur"})
             {
                 var output="";
-                var session=new AndroidInputSession(new Plain(),_=>[],(op,text,_)=>{if(op==1)output+=text;});
+                var session=new AndroidInputSession(new Plain(),_=>[],(op,text,_)=>{if(op==1)output+=text;},()=>new Meltype.Config.InputPreferences{EnterCommitsAsShown=true});
                 foreach(var c in word)session.Character(c);
                 if(session.View?.Text != word) throw new Exception("Expected English live preview: "+word+"="+session.View?.Text);
                 if(action=="enter")session.Key(0x0D);
@@ -34,7 +34,7 @@ internal static class ConversionSelectionTests
         foreach(var action in new[]{"enter","space","blur"})
         {
             var output="";
-            var session=new AndroidInputSession(new Plain(),_=>[],(op,text,_)=>{if(op==1)output+=text;});
+            var session=new AndroidInputSession(new Plain(),_=>[],(op,text,_)=>{if(op==1)output+=text;},()=>new Meltype.Config.InputPreferences{EnterCommitsAsShown=true});
             foreach(var c in "kyouhaopen")session.Character(c);
             var visible=session.View!.Text;
             if(!visible.EndsWith("open"))throw new Exception("Mixed preview missing English: "+visible);
@@ -90,6 +90,69 @@ internal static class ConversionSelectionTests
             }
         }
         Console.WriteLine("PASS: explicit English candidates and selected conversion survive confirmation for 21 words");
+    }
+    public static void ArrowTests()
+    {
+        foreach (var begin in new[] { "live", "selected", "resized" })
+        {
+            var operations = new List<int>();
+            var input = new AndroidInputSession(new Split(), _ => [], (op, _, _) => operations.Add(op));
+            foreach (var c in "nihongowobenkyousuru") input.Character(c);
+            if (input.View?.Clauses is not { Count: 4 }) throw new Exception("Expected four conversion clauses");
+            if (begin != "live") input.SelectPosition(input.View.Clauses.Take(3).Sum(c => c.Length));
+            if (begin == "resized") input.Key(0x25, shift: true);
+            var clauses = input.View!.Clauses!.ToArray();
+            var text = input.View.Text;
+            operations.Clear();
+            for (var expected = 2; expected >= 0; expected--)
+            {
+                input.Key(0x25);
+                if (input.View?.SelectedClause != expected)
+                    throw new Exception($"{begin}: Left expected clause {expected}, got {input.View?.SelectedClause}");
+            }
+            input.Key(0x25);
+            if (input.View?.SelectedClause != 0) throw new Exception("Left wrapped at first clause");
+            for (var expected = 1; expected < clauses.Length; expected++)
+            {
+                input.Key(0x27);
+                if (input.View?.SelectedClause != expected) throw new Exception("Right skipped a clause");
+            }
+            input.Key(0x27);
+            if (input.View?.SelectedClause != clauses.Length - 1 || input.View.Text != text ||
+                !input.View.Clauses!.SequenceEqual(clauses) || operations.Any(op => op is 1 or 5 or 6))
+                throw new Exception("Arrow movement changed text, boundaries, committed, or escaped editor");
+        }
+        Console.WriteLine("PASS: live, selected and resized clauses move one at a time with arrows and stop at edges");
+    }
+    sealed class Split : IKanjiConverter
+    {
+        public string? Convert(string text) => text;
+        public IReadOnlyList<ConversionClause>? ConvertClauses(string text, string? context = null) =>
+            text == "にほんごをべんきょうする" ? [new("にほんご", "日本語"), new("を", "を"), new("べんきょう", "勉強"), new("する", "する")] : [new(text, text)];
+    }
+    public static void InitialResizeTests()
+    {
+        foreach(var arrow in new[]{0x27,0x25})
+        {
+            var operations=new List<int>();
+            var input=new AndroidInputSession(new Split(),_=>[],(op,_,_)=>operations.Add(op));
+            foreach(var c in "nihongowobenkyousuru")input.Character(c);
+            var before=input.View!.Clauses!.ToArray();
+            if(input.View.SelectedClause!=3)throw new Exception("Live conversion must initially select the last clause");
+            operations.Clear();input.Key(arrow,shift:true);
+            if(input.View?.SelectedClause!=3 || !input.View.Clauses!.Take(3).SequenceEqual(before.Take(3)))
+                throw new Exception("Initial Shift+arrow resized or selected an earlier clause: "+arrow+" selected="+input.View?.SelectedClause);
+            if(arrow==0x27 && !input.View.Clauses!.SequenceEqual(before))
+                throw new Exception("Initial Shift+Right changed the last clause with no following clause");
+            if(arrow==0x25)
+            {
+                if(!input.View.Clauses!.Skip(3).SequenceEqual(new[]{"す","る"}))throw new Exception("Initial Shift+Left did not shrink the last clause");
+                input.Key(0x27,shift:true);
+                if(input.View.SelectedClause!=3 || !input.View.Clauses!.SequenceEqual(before))throw new Exception("Shift+Right did not restore the same last clause");
+            }
+            if(operations.Any(op=>op is 1 or 5 or 6))throw new Exception("Initial resize committed or moved the editor cursor");
+        }
+        Console.WriteLine("PASS: first Shift+Right/Left retains the rightmost live clause; resize limits and restoration preserve preceding clauses");
     }
     public static void ResizeTests()
     {

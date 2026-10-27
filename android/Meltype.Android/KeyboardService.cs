@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 using Android.App;
 using Android.Content;
 using Android.Graphics;
@@ -20,7 +20,7 @@ namespace Meltype.Mobile;
 [Service(Label = "Meltype Android", Permission = "android.permission.BIND_INPUT_METHOD", Exported = true)]
 [IntentFilter(new[] { "android.view.InputMethod" })]
 [MetaData("android.view.im", Resource = "@xml/input_method")]
-public sealed class KeyboardService : InputMethodService
+public sealed partial class KeyboardService : InputMethodService
 {
     private View? _inputRoot;
     private KeyboardInsets? _keyboardInsets;
@@ -31,9 +31,9 @@ public sealed class KeyboardService : InputMethodService
     private HorizontalScrollView? _candidateScroll;
     private NextKeyPrediction? _nextKeyPrediction;
     private string _predictionPrefix = "";
+    private LetterTouch? _pendingLetterTouch;
     private bool _adaptiveAllowed;
     private string? _contextBefore, _contextAfter;
-    private readonly Dictionary<View, KeyTouch> _letterTouches = [];
     private string? _candidateSignature;
     private readonly List<KeyTouch> _touches = [];
     private readonly KeyPressOrder _pressOrder = new();
@@ -69,9 +69,6 @@ public sealed class KeyboardService : InputMethodService
     private InputPreferenceStore? _preferences;
     private InputPreferences _activePreferences = new();
     private char _punctuationInput = ',';
-    private NativeZenzEvaluator? _zenz;
-    private bool _zenzPollScheduled;
-    private volatile bool _stopping;
 
     public override void OnCreate()
     {
@@ -82,11 +79,12 @@ public sealed class KeyboardService : InputMethodService
         _layoutPreferences = GetSharedPreferences("keyboard-layout", FileCreationMode.Private);
         _oneHandMode = _layoutPreferences!.GetInt("one-hand-mode", 0);
         if (_oneHandMode is < 0 or > 2) _oneHandMode = 0;
+        _clipboardOfferPreferences = GetSharedPreferences("clipboard-offer", FileCreationMode.Private);
+        _clipboardSuggestion = new ClipboardSuggestion(_clipboardOfferPreferences!.GetLong("last-copy", 0));
         _preferences = new InputPreferenceStore(System.IO.Path.Combine(FilesDir!.AbsolutePath, "input-preferences.json"));
         _main = new Handler(Looper.MainLooper!);
         _thread = new HandlerThread("MeltypeInput"); _thread.Start();
         _worker = new Handler(_thread.Looper!);
-        _zenz = LocalZenz.Create(this);
         _worker.Post(() =>
         {
             try
@@ -173,7 +171,7 @@ public sealed class KeyboardService : InputMethodService
         CancelTouches();
         _clipboardOpen = false;
         _touches.Clear();
-        _letterTouches.Clear(); _predictionPrefix = "";
+        _pendingLetterTouch = null; _predictionPrefix = "";
         _keyRows.RemoveAllViews(); _letters.Clear(); _shift = null; _mode = null; _punctuation = null;
         if (_numberRows != null)
         {
@@ -243,10 +241,9 @@ public sealed class KeyboardService : InputMethodService
         key.Click += (_, _) => { _pressOrder.BeforePress(); invoke(); };
         {
             var touch = new KeyTouch(_main!, invoke, repeat, _pressOrder, ViewConfiguration.Get(this)!.ScaledTouchSlop,
-                longAction == null ? null : () => { _predictionPrefix = ""; longAction(); _shiftState.Consume(); Status(); },
-                label.Length == 1 && label[0] is >= 'a' and <= 'z' ? ResolveLetterTouch : null, hint == null ? 0 : Dp(24), longPressEnabled);
+                longAction == null ? null : () => { _predictionPrefix = ""; _pendingLetterTouch = null; longAction(); _shiftState.Consume(); Status(); },
+                label.Length == 1 && label[0] is >= 'a' and <= 'z' ? CaptureLetterTouch : null, hint == null ? 0 : Dp(24), longPressEnabled);
             _touches.Add(touch); key.SetOnTouchListener(touch);
-            if (label.Length == 1 && label[0] is >= 'a' and <= 'z') _letterTouches[key] = touch;
         }
         View cell = key;
         if (hint != null)
@@ -265,8 +262,9 @@ public sealed class KeyboardService : InputMethodService
     public override void OnStartInput(EditorInfo? attribute, bool restarting)
     {
         base.OnStartInput(attribute, restarting);
+        _consumedKeys.Clear();
         _english = false;
-        _clipboardSuggestion.Dismiss();
+        if (!restarting) _clipboardSuggestion.Dismiss();
         _predictionPrefix = "";
         if (_clipboardOpen) BuildKeyRows();
         CancelTouches();
@@ -274,6 +272,7 @@ public sealed class KeyboardService : InputMethodService
         _preeditActive = false; _shownView = null; _choosingBrackets = false; _shiftState.Reset();
         var type = attribute?.InputType ?? InputTypes.Null;
         var inputClass = type & InputTypes.MaskClass;
+        _keyTextEditor = inputClass == InputTypes.ClassText;
         var variation = type & InputTypes.MaskVariation;
         var wasNumeric = _numberRows != null;
         _clipboardAllowed = ClipboardInputPolicy.Allows((int)type);
@@ -300,33 +299,31 @@ public sealed class KeyboardService : InputMethodService
                 new AndroidUserDictionary(Path.Combine(FilesDir!.AbsolutePath, "user-dictionary.json")),
                 personalCandidatesAllowed ? LoadPersonalTypos() : null, clipboard: ReadClipboardCandidate,
                 surrounding: () => (_contextBefore, _contextAfter), stateDirectory: FilesDir!.AbsolutePath,
-                contextEvaluator: personalCandidatesAllowed && _activePreferences.LocalZenz ? _zenz : null);
-            if (personalCandidatesAllowed && _activePreferences.LocalZenz) _ = _zenz?.WarmUpAsync();
+                contextEvaluator: ContextEvaluatorForEditor(allowLearning), coherentRomanReview: true);
             _session.SetEnglish(english);
         }); Status();
     }
     public override void OnStartInputView(EditorInfo? info, bool restarting)
     {
         base.OnStartInputView(info, restarting);
-        _clipboardOfferPreferences ??= GetSharedPreferences("clipboard-offer", FileCreationMode.Private);
-        _clipboardSuggestion = new ClipboardSuggestion(_clipboardOfferPreferences!.GetLong("last-copy", 0));
         RefreshClipboardSuggestion(offer: true);
         Status();
     }
 
     public override void OnFinishInput()
     {
+        _consumedKeys.Clear();_keyTextEditor=false;
         CancelTouches();
         CurrentInputConnection?.FinishComposingText();
         _preeditActive = false; _shownView = null; _choosingBrackets = false; _shiftState.Reset();
         Interlocked.Increment(ref _generation);
-        _worker?.Post(() => _session?.Reset());
+        _worker?.Post(() => { _session?.Reset(); _zenzEvaluator?.ClearCaches(); });
         _candidates?.RemoveAllViews(); base.OnFinishInput();
         _candidateSignature = null;
     }
     public override void OnFinishInputView(bool finishingInput)
     {
-        _clipboardSuggestion.Dismiss();
+        if (finishingInput) _clipboardSuggestion.Dismiss();
         CancelTouches(); _shiftState.Reset();
         _english = false;
         Queue(() => _session?.SetEnglish(false));
@@ -358,17 +355,20 @@ public sealed class KeyboardService : InputMethodService
     }
     private void Input(char c)
     {
+        var touch = _pendingLetterTouch?.Original.Letter == c ? _pendingLetterTouch : null;
+        _pendingLetterTouch = null;
         _clipboardSuggestion.Dismiss();
         _predictionPrefix = char.ToLowerInvariant(c) is >= 'a' and <= 'z'
             ? (_predictionPrefix + char.ToLowerInvariant(c))[^Math.Min(_predictionPrefix.Length + 1, 32)..] : "";
         if (_restricted) { CurrentInputConnection?.CommitText(c.ToString(), 1); return; }
-        Queue(() => _session?.Character(c));
+        Queue(() => _session?.Character(c, touch));
     }
     private void InputSpace()
+        =>InputSpace(_shiftState.Active);
+    private void InputSpace(bool shifted)
     {
         _clipboardSuggestion.Dismiss();
         _predictionPrefix = "";
-        var shifted = _shiftState.Active;
         var p = _preferences!.Current;
         var wide = p.FullWidthSpaceByDefault ? !shifted : shifted && !p.ShiftSpaceHalfWidth;
         if (_restricted) CurrentInputConnection?.CommitText(wide ? "　" : " ", 1);
@@ -376,6 +376,11 @@ public sealed class KeyboardService : InputMethodService
     }
 
     private void Special(int key)
+    {
+        var shift = _shiftState.Active;
+        Special(key,shift);
+    }
+    private void Special(int key,bool shift)
     {
         _clipboardSuggestion.Dismiss();
         _predictionPrefix = key == 0x08 && _predictionPrefix.Length > 0 ? _predictionPrefix[..^1] : "";
@@ -387,7 +392,6 @@ public sealed class KeyboardService : InputMethodService
             return;
         }
         if (key == 0x0D && _choosingBrackets && _symbols) { _symbols = false; BuildKeyRows(); Status(); }
-        var shift = _shiftState.Active;
         Queue(() => _session?.Key(key, shift: shift));
     }
     private void Queue(Action action)
@@ -406,6 +410,7 @@ public sealed class KeyboardService : InputMethodService
             try { action(); }
             finally
             {
+                ScheduleZenzPoll();
                 var updates = _editorUpdates.ToArray();
                 _editorUpdates = null;
                 if (updates.Length > 0) _main!.Post(() =>
@@ -422,27 +427,8 @@ public sealed class KeyboardService : InputMethodService
                     }
                     finally { editor.EndBatchEdit(); }
                 });
-                ScheduleZenzPoll();
             }
         });
-    }
-    // Runs only while a review is pending, on the serialized owner worker.
-    private void ScheduleZenzPoll()
-    {
-        if (_stopping || _zenzPollScheduled || _session?.ContextEvaluationPending != true) return;
-        _zenzPollScheduled = true;
-        var generation = Volatile.Read(ref _generation);
-        _worker!.PostDelayed(() =>
-        {
-            _zenzPollScheduled = false;
-            if (_stopping) return;
-            if (generation == Volatile.Read(ref _generation))
-            {
-                _jobGeneration = generation;
-                _session?.PollContextEvaluation(System.Environment.TickCount64);
-            }
-            ScheduleZenzPoll();
-        }, 40);
     }
     private void PostEditorUpdate(Action update)
     {
@@ -501,16 +487,6 @@ public sealed class KeyboardService : InputMethodService
             typed.SetTextColor(MobileStyle.Muted); typed.Gravity = GravityFlags.Center;
             typed.SetPadding(Dp(8), 0, Dp(8), 0); _candidates.AddView(typed, new LinearLayout.LayoutParams(-2, Dp(42)));
         }
-        if (view is { Predictions.Count: > 0 } && _candidates != null)
-            for (var i = 0; i < view.Predictions.Count; i++)
-            {
-                var index = i;
-                var predicted = new Button(this) { Text = view.Predictions[index], TextSize = 17, ContentDescription = "予測候補 " + i };
-                MobileStyle.KeyboardKey(predicted);
-                predicted.Click += (_,_) => Queue(() => _session?.SelectPrediction(index));
-                predicted.LongClick += (_,e) => { Queue(() => _session?.ForgetPrediction(index)); e.Handled = true; };
-                _candidates.AddView(predicted, new LinearLayout.LayoutParams(-2, Dp(42)));
-            }
         if (view is { Candidates.Count: > 0 } && _candidates != null)
             for (var i = 0; i < Math.Min(view.Candidates.Count, 24); i++)
             {
@@ -523,6 +499,16 @@ public sealed class KeyboardService : InputMethodService
                     _shiftState.Consume(); Status(); Queue(() => _session?.Select(index));
                 };
                 _candidates.AddView(button, new LinearLayout.LayoutParams(-2, Dp(42)));
+            }
+        if (view is { Predictions.Count: > 0 } && _candidates != null)
+            for (var i = 0; i < view.Predictions.Count; i++)
+            {
+                var index = i;
+                var predicted = new Button(this) { Text = view.Predictions[index], TextSize = 17, ContentDescription = "予測候補 " + i };
+                MobileStyle.KeyboardKey(predicted);
+                predicted.Click += (_,_) => Queue(() => _session?.SelectPrediction(index));
+                predicted.LongClick += (_,e) => { Queue(() => _session?.ForgetPrediction(index)); e.Handled = true; };
+                _candidates.AddView(predicted, new LinearLayout.LayoutParams(-2, Dp(42)));
             }
         if (suggestion != null && _candidates != null)
         {
@@ -584,10 +570,10 @@ public sealed class KeyboardService : InputMethodService
     }
     private void RefreshClipboardSuggestion(bool offer = false)
     {
-        _clipboardSuggestion.Dismiss();
+        if (!offer) _clipboardSuggestion.Dismiss();
         var manager = (global::Android.Content.ClipboardManager?)GetSystemService(ClipboardService);
         var clip = manager?.PrimaryClip;
-        if (clip?.Description is not { } description) return;
+        if (clip?.Description is not { } description) { _clipboardSuggestion.Dismiss(); return; }
         var timestamp = description.Timestamp;
         var eligible = _clipboardAllowed &&
             description.Extras?.GetBoolean("android.content.extra.IS_SENSITIVE", false) != true;
@@ -605,7 +591,7 @@ public sealed class KeyboardService : InputMethodService
         if (offer)
         {
             _clipboardSuggestion.Open(timestamp, suggestion);
-            _clipboardOfferPreferences?.Edit()?.PutLong("last-copy", timestamp)?.Apply();
+            _clipboardOfferPreferences?.Edit()?.PutLong("last-copy", _clipboardSuggestion.LastTimestamp)?.Apply();
         }
     }
     private void ShowClipboard()
@@ -722,19 +708,20 @@ public sealed class KeyboardService : InputMethodService
     }
     public override void OnDestroy()
     {
-        _stopping = true;
-        _zenz?.Dispose();
+        _worker?.Post(() => _session?.Reset());
         CancelTouches();
-        Interlocked.Increment(ref _generation); _thread?.QuitSafely(); base.OnDestroy();
+        Interlocked.Increment(ref _generation); _zenzEvaluator?.Dispose(); _zenzEvaluator = null; _thread?.QuitSafely(); base.OnDestroy();
     }
 
-    private void CancelTouches() { foreach (var touch in _touches) touch.Cancel(); _predictionPrefix = ""; }
+    private void CancelTouches() { foreach (var touch in _touches) touch.Cancel(); _predictionPrefix = ""; _pendingLetterTouch = null; }
     private PersonalRomajiTypos? LoadPersonalTypos() =>
         PersonalRomajiTypos.Load(Path.Combine(FilesDir!.AbsolutePath, "personal-romaji-typos.json"));
-    private (View View, KeyTouch Touch)? ResolveLetterTouch(View source, MotionEvent e)
+    private void CaptureLetterTouch(View source, MotionEvent e)
     {
+        _pendingLetterTouch = null;
+        if (e.ActionMasked != MotionEventActions.Down) return;
         if (!_adaptiveAllowed || _restricted || _symbols || _numberRows != null || _choosingBrackets ||
-            _shiftState.Active || _nextKeyPrediction == null || _preferences?.Current.LearningEnabled != true) return null;
+            _english || _shiftState.Active || _nextKeyPrediction == null || _preferences?.Current.LearningEnabled != true) return;
         var location = new int[2]; source.GetLocationOnScreen(location);
         var x = location[0] + e.GetX(); var y = location[1] + e.GetY();
         var keys = _letters.Select(item =>
@@ -742,9 +729,7 @@ public sealed class KeyboardService : InputMethodService
             var at = new int[2]; item.Key.GetLocationOnScreen(at);
             return new TouchKey(item.Letter, at[0], at[1], item.Key.Width, item.Key.Height);
         }).ToArray();
-        var letter = AdaptiveKeyTarget.Choose(keys, x, y, c => _nextKeyPrediction.Probability(_predictionPrefix, c));
-        var target = _letters.FirstOrDefault(item => item.Letter == letter).Key;
-        return target != null && target != source && _letterTouches.TryGetValue(target, out var touch) ? (target, touch) : null;
+        _pendingLetterTouch = AdaptiveKeyTarget.Capture(keys, x, y, c => _nextKeyPrediction.Probability(_predictionPrefix, c));
     }
 
     private sealed class KeyTouch : Java.Lang.Object, View.IOnTouchListener
@@ -761,12 +746,11 @@ public sealed class KeyboardService : InputMethodService
         private bool _held;
         private readonly int _flickThreshold;
         private float _startX, _startY;
-        private readonly Func<View, MotionEvent, (View View, KeyTouch Touch)?>? _resolve;
-        private (View View, KeyTouch Touch)? _target;
+        private readonly Action<View, MotionEvent>? _capture;
         public KeyTouch(Handler handler, Action action, bool repeats, KeyPressOrder order, int slop, Action? longAction = null,
-            Func<View, MotionEvent, (View View, KeyTouch Touch)?>? resolve = null, int flickThreshold = 0, bool longPressEnabled = true)
+            Action<View, MotionEvent>? capture = null, int flickThreshold = 0, bool longPressEnabled = true)
         {
-            _resolve = resolve;
+            _capture = capture;
             _flickThreshold = flickThreshold;
             _handler = handler; _action = action; _repeats = repeats; _order = order; _slop = slop;
             if(longAction != null) { _symbolPress = new SymbolPress(action,longAction,order,longPressEnabled); _longPress = new Java.Lang.Runnable(()=>_symbolPress.Hold()); }
@@ -777,19 +761,11 @@ public sealed class KeyboardService : InputMethodService
             if (view == null || e == null) return false;
             if (e.ActionMasked == MotionEventActions.Down)
             {
-                _order.BeforePress(); Cancel(); _target = _resolve?.Invoke(view, e);
+                _order.BeforePress(); Cancel(); _capture?.Invoke(view, e);
             }
-            if (_target is { } target)
-            {
-                var from = new int[2]; var to = new int[2];
-                view.GetLocationOnScreen(from); target.View.GetLocationOnScreen(to);
-                using var shifted = MotionEvent.Obtain(e)!;
-                shifted.OffsetLocation(from[0] - to[0], from[1] - to[1]);
-                var handled = target.Touch.HandleTouch(target.View, shifted);
-                if (e.ActionMasked is MotionEventActions.Up or MotionEventActions.Cancel) _target = null;
-                return handled;
-            }
-            return HandleTouch(view, e);
+            var handled = HandleTouch(view, e);
+            if (e.ActionMasked is MotionEventActions.Up or MotionEventActions.Cancel) _capture?.Invoke(view, e);
+            return handled;
         }
         private bool HandleTouch(View view, MotionEvent e)
         {
@@ -810,7 +786,7 @@ public sealed class KeyboardService : InputMethodService
             else if (e.ActionMasked == MotionEventActions.Cancel) Cancel();
             return true;
         }
-        public void Cancel() { var target = _target; _target = null; target?.Touch.Cancel(); _symbolPress?.Cancel(); if(_longPress != null) _handler.RemoveCallbacks(_longPress); _held = false; _handler.RemoveCallbacks(_repeat); if (_view != null) _view.Pressed = false; _view = null; }
+        public void Cancel() { _symbolPress?.Cancel(); if(_longPress != null) _handler.RemoveCallbacks(_longPress); _held = false; _handler.RemoveCallbacks(_repeat); if (_view != null) _view.Pressed = false; _view = null; }
     }
 
     private sealed class KeyboardInsets : Java.Lang.Object, View.IOnApplyWindowInsetsListener

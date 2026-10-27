@@ -105,6 +105,8 @@ internal static class KeyboardInteractionTests
         var offer = new ClipboardSuggestion();
         offer.Open(101, "copied");
         if (offer.Text != "copied") throw new Exception("First opening must offer clipboard");
+        offer.Open(101, "copied");
+        if (offer.Text != "copied") throw new Exception("Repeated input-view start must keep the new clipboard offer");
         offer.Dismiss();
         offer.Open(101, "copied");
         if (offer.Text != null) throw new Exception("Reopen must not offer consumed copy");
@@ -117,7 +119,7 @@ internal static class KeyboardInteractionTests
         if (restarted.Text != null) throw new Exception("Restart must not reoffer consumed copy");
         restarted.Open(103, null);
         restarted.Open(103, "private");
-        if (restarted.Text != null) throw new Exception("Ineligible first editor must consume copy");
+        if (restarted.Text != "private") throw new Exception("An ineligible editor must not consume a copy before an eligible editor can offer it");
         clips.Add("copied");
         if (!clips.Items.Contains("copied")) throw new Exception("Dismiss must retain clipboard history");
         Console.WriteLine("PASS: long press without extra letter, cancellation, Unicode cursor, clipboard bounds/privacy/expiry");

@@ -5,14 +5,14 @@
     <OutputType>Exe</OutputType>
     <ApplicationId>jp.aonesenbongi.meltype</ApplicationId>
     <ApplicationTitle>Meltype</ApplicationTitle>
-    <ApplicationVersion>7</ApplicationVersion>
-    <ApplicationDisplayVersion>1.1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>32</ApplicationVersion>
+    <ApplicationDisplayVersion>1.2.0</ApplicationDisplayVersion>
     <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <AndroidLinkMode>None</AndroidLinkMode>
     <RunAOTCompilation>false</RunAOTCompilation>
     <AndroidEnableMarshalMethods>false</AndroidEnableMarshalMethods>
-    <AndroidNeedsInternetPermission>false</AndroidNeedsInternetPermission>
+    <AndroidNeedsInternetPermission>true</AndroidNeedsInternetPermission>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

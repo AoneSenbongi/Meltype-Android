@@ -8,7 +8,7 @@ internal static class BracketConversionTests
         foreach (var quotes in new[] { false, true })
         {
             var ops = new List<(int Op, string Text)>();
-            var session = new AndroidInputSession(new FakeConverter(), _ => [], (op,text,_) => ops.Add((op,text)));
+            var session = new AndroidInputSession(new FakeConverter(), _ => [], (op,text,_) => ops.Add((op,text)),()=>new Meltype.Config.InputPreferences{FullWidthParentheses=false});
             session.SetEnglish(english);
             session.BeginBracketConversion(quotes);
             var candidates = quotes ? new[] { "「」", "｢｣", "『』", "【】" } : new[] { "()", "（）", "{}", "｛｝", "[]", "［］" };
