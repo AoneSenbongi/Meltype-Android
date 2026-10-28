@@ -344,11 +344,11 @@ public sealed partial class KeyboardService : InputMethodService
                 contextEvaluator: ContextEvaluatorForEditor(allowLearning), coherentRomanReview: true);
             _session.SetEnglish(english);
         }); Status();
-        UpdateInputViewShown();
     }
     public override void OnStartInputView(EditorInfo? info, bool restarting)
     {
         base.OnStartInputView(info, restarting);
+        UpdateInputViewShown();
         if (ApplyTheme()) BuildKeyRows();
         var generation = ++_inputViewGeneration;
         if (PasswordKeyboardPolicy.RequiresSoftwareKeyboard((int)(info?.InputType ?? InputTypes.Null)))
