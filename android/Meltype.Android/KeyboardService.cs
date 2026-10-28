@@ -64,6 +64,7 @@ public sealed partial class KeyboardService : InputMethodService
     private bool _english, _restricted, _ready;
     private int _inputViewGeneration;
     private bool _dark;
+    private global::Android.Content.Res.UiMode _systemNight;
     private bool _changingTheme;
     private bool _preeditActive;
     private int _generation;
@@ -113,6 +114,7 @@ public sealed partial class KeyboardService : InputMethodService
     private bool ApplyTheme()
     {
         MobileStyle.Apply(this);
+        _systemNight = Resources!.Configuration!.UiMode & global::Android.Content.Res.UiMode.NightMask;
         var changed = _dark != MobileStyle.Dark;
         _dark = MobileStyle.Dark;
         _inputRoot?.SetBackgroundColor(MobileStyle.KeyboardBackground);
@@ -137,7 +139,7 @@ public sealed partial class KeyboardService : InputMethodService
     public override void OnConfigurationChanged(global::Android.Content.Res.Configuration? newConfig)
     {
         _changingTheme = newConfig != null &&
-            ((newConfig.UiMode & global::Android.Content.Res.UiMode.NightMask) == global::Android.Content.Res.UiMode.NightYes) != _dark;
+            (newConfig.UiMode & global::Android.Content.Res.UiMode.NightMask) != _systemNight;
         try { base.OnConfigurationChanged(newConfig); }
         finally { _changingTheme = false; }
         if (ApplyTheme()) { BuildKeyRows(); Status(); }

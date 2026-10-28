@@ -4,10 +4,11 @@ using Android.Content.Res;
 using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.Widget;
+using Meltype.AndroidCore;
 
 namespace Meltype.Mobile;
 
-// 画面はコードで組んでいるので、端末のダークテーマに合わせて色だけを切り替える。
+// 画面はコードで組んでいるので、テーマ設定に合わせて色だけを切り替える。
 // Apply を呼んでから View を作る。IME は構成変更のたびに Apply し直して作り直す。
 internal static class MobileStyle
 {
@@ -24,8 +25,22 @@ internal static class MobileStyle
     internal static Color Ink => Dark ? Color.Rgb(232, 234, 237) : Color.Rgb(32, 32, 32);
     internal static Color Muted => Dark ? Color.Rgb(168, 176, 185) : Color.Rgb(93, 111, 124);
 
-    internal static bool IsDark(Context context) =>
-        (context.Resources?.Configuration?.UiMode & UiMode.NightMask) == UiMode.NightYes;
+    internal static KeyboardTheme Theme(Context context) =>
+        (KeyboardTheme)(context.GetSharedPreferences("appearance", FileCreationMode.Private)?.GetInt("theme", 0) ?? 0);
+
+    internal static bool SaveTheme(Context context, KeyboardTheme theme) =>
+        context.GetSharedPreferences("appearance", FileCreationMode.Private)!.Edit()!.PutInt("theme", (int)theme)!.Commit();
+
+    internal static bool IsDark(Context context) => KeyboardAppearance.IsDark(Theme(context),
+        (context.ApplicationContext?.Resources?.Configuration?.UiMode & UiMode.NightMask) == UiMode.NightYes);
+
+    internal static Context ActivityContext(Context context)
+    {
+        var configuration = new Configuration(context.Resources!.Configuration);
+        configuration.UiMode = (configuration.UiMode & ~UiMode.NightMask) |
+            (IsDark(context) ? UiMode.NightYes : UiMode.NightNo);
+        return context.CreateConfigurationContext(configuration)!;
+    }
 
     internal static void Apply(Context context) => Dark = IsDark(context);
 
@@ -63,7 +78,7 @@ internal static class MobileStyle
         button.SetTypeface(Typeface.Default, TypefaceStyle.Normal);
         var shape = new GradientDrawable();
         shape.SetColor(function ? FunctionKeyBackground : KeyBackground);
-        shape.SetStroke(Dp(button.Context!, 1), KeyStroke);
+        shape.SetStroke(1, KeyStroke);
         button.Background = shape;
         button.BackgroundTintList = null;
         button.SetPadding(0, 0, 0, 0);

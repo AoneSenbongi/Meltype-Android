@@ -5,8 +5,8 @@
     <OutputType>Exe</OutputType>
     <ApplicationId>jp.aonesenbongi.meltype</ApplicationId>
     <ApplicationTitle>Meltype</ApplicationTitle>
-    <ApplicationVersion>33</ApplicationVersion>
-    <ApplicationDisplayVersion>1.2.1</ApplicationDisplayVersion>
+    <ApplicationVersion>34</ApplicationVersion>
+    <ApplicationDisplayVersion>1.2.2</ApplicationDisplayVersion>
     <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <AndroidLinkMode>None</AndroidLinkMode>

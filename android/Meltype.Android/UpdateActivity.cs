@@ -16,6 +16,8 @@ public sealed class UpdateActivity : Activity
     readonly CancellationTokenSource _cancel=new();
     TextView _status=null!;Button _action=null!;ProgressBar _progress=null!;
     ReleaseUpdate? _update;string? _downloaded;
+    protected override void AttachBaseContext(Context? context) =>
+        base.AttachBaseContext(MobileStyle.ActivityContext(context!));
     protected override void OnCreate(Bundle? state)
     {
         base.OnCreate(state);

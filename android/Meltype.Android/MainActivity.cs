@@ -25,6 +25,8 @@ public sealed class MainActivity : Activity
     private TextView? _dictionaryStatus;
     private string DictionaryPath => Path.Combine(FilesDir!.AbsolutePath, "user-dictionary.json");
     private int Dp(float value) => MobileStyle.Dp(this, value);
+    protected override void AttachBaseContext(Context? context) =>
+        base.AttachBaseContext(MobileStyle.ActivityContext(context!));
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -56,6 +58,25 @@ public sealed class MainActivity : Activity
         Add("キーボードを選ぶ", () => ((InputMethodManager)GetSystemService(InputMethodService)!).ShowInputMethodPicker(), setup);
         Add("アプリを更新", ShowUpdate);
         Add("単語登録・辞書の取り込み", ShowDictionary);
+        var themeRow = new LinearLayout(this);
+        themeRow.SetGravity(GravityFlags.CenterVertical);
+        themeRow.AddView(Label("テーマ", 14, MobileStyle.Ink), new LinearLayout.LayoutParams(0, -2, 1));
+        var theme = new Spinner(this) { ContentDescription = "テーマ" };
+        var themeAdapter = new ArrayAdapter<string>(this, global::Android.Resource.Layout.SimpleSpinnerItem,
+            new[] { "システムに合わせる", "ライト", "ダーク" });
+        themeAdapter.SetDropDownViewResource(global::Android.Resource.Layout.SimpleSpinnerDropDownItem);
+        theme.Adapter = themeAdapter;
+        var selectedTheme = MobileStyle.Theme(this);
+        theme.SetSelection(Enum.IsDefined(selectedTheme) ? (int)selectedTheme : 0);
+        theme.ItemSelected += (_, e) =>
+        {
+            var chosen = (KeyboardTheme)e.Position;
+            if (chosen == MobileStyle.Theme(this)) return;
+            if (MobileStyle.SaveTheme(this, chosen)) Recreate();
+            else Toast.MakeText(this, "テーマを保存できません。", ToastLength.Long)!.Show();
+        };
+        themeRow.AddView(theme, new LinearLayout.LayoutParams(-2, Dp(48)));
+        layout.AddView(themeRow);
         _dictionaryStatus = Label("", 12, MobileStyle.Muted);
         _dictionaryStatus.SetPadding(0, Dp(4), 0, Dp(12)); layout.AddView(_dictionaryStatus); RefreshDictionary();
         var preferences = new InputPreferenceStore(Path.Combine(FilesDir!.AbsolutePath, "input-preferences.json"));

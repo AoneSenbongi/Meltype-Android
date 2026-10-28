@@ -33,6 +33,7 @@ if (typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.TypoTraini
 if (typeof(AndroidInputSession).Assembly.GetType("Meltype.AndroidCore.HardwareKeyboard") is not null)
     throw new Exception("Android still includes external-keyboard-only commands");
 PasswordKeyboardTests.Run();
+KeyboardAppearanceTests.Run();
 ReleaseDefaultsTests.Run();
 MozcReuseTests.Run();
 KeyEventInputTests.Run();
