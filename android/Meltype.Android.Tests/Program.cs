@@ -44,6 +44,8 @@ NeuralConversionTests.Run();
 CandidateDisplayTests.Run();
 ClauseReviewTests.Run();
 AndroidUpdateTests.Run();
+UpdateReleaseNotesTests.Run();
+ReleasePushTests.Run();
 PersonalTypoLearningTests.Run();
 LiveConversionTests.Run();
 ModelNumberTests.Run();

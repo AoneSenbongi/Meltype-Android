@@ -5,6 +5,7 @@ namespace Meltype.AndroidCore;
 
 public sealed record ReleaseUpdate(string Version, string Url, long Size, string Sha256)
 {
+    public string Notes { get; init; } = "";
     public const string Api = "https://api.github.com/repos/AoneSenbongi/Meltype-Android/releases/latest";
     public bool Matches(ReadOnlySpan<byte> bytes) => bytes.Length == Size && Convert.ToHexString(SHA256.HashData(bytes)).Equals(Sha256,StringComparison.OrdinalIgnoreCase);
     public static ReleaseUpdate? Find(string json,string package,string current)
@@ -23,7 +24,9 @@ public sealed record ReleaseUpdate(string Version, string Url, long Size, string
             var url=asset.GetProperty("browser_download_url").GetString();var digest=asset.GetProperty("digest").GetString()??"";var size=asset.GetProperty("size").GetInt64();
             if(url!=$"https://github.com/AoneSenbongi/Meltype-Android/releases/download/{tag}/{name}" || size is <=0 or >536870912 ||
                 !digest.StartsWith("sha256:",StringComparison.Ordinal) || digest.Length!=71 || !digest[7..].All(Uri.IsHexDigit))return null;
-            return new(version,url,size,digest[7..]);
+            var notes=release.TryGetProperty("body",out var body) && body.ValueKind==JsonValueKind.String ? body.GetString()??"" : "";
+            if(notes.Length>32768)notes=notes[..32768]+"\n\n（以降は省略）";
+            return new(version,url,size,digest[7..]) { Notes=notes };
         }
         return null;
     }

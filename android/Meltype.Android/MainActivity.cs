@@ -23,6 +23,9 @@ public sealed class MainActivity : Activity
     private TextView? _setupStatus;
     private Action? _refreshPreferences;
     private TextView? _dictionaryStatus;
+    private Switch? _updateNotifications;
+    private bool _refreshingNotifications;
+    private bool _notificationsWereBlocked;
     private string DictionaryPath => Path.Combine(FilesDir!.AbsolutePath, "user-dictionary.json");
     private int Dp(float value) => MobileStyle.Dp(this, value);
     protected override void AttachBaseContext(Context? context) =>
@@ -77,6 +80,22 @@ public sealed class MainActivity : Activity
         };
         themeRow.AddView(theme, new LinearLayout.LayoutParams(-2, Dp(48)));
         layout.AddView(themeRow);
+        _updateNotifications = new Switch(this) { Text = "更新通知", TextSize = 14, ContentDescription = "更新通知" };
+        _updateNotifications.SetTextColor(MobileStyle.Ink);
+        layout.AddView(_updateNotifications, new LinearLayout.LayoutParams(-1, Dp(52)));
+        _updateNotifications.CheckedChange += (_, e) =>
+        {
+            if (_refreshingNotifications) return;
+            if (e.IsChecked && OperatingSystem.IsAndroidVersionAtLeast(33) && CheckSelfPermission(global::Android.Manifest.Permission.PostNotifications) != global::Android.Content.PM.Permission.Granted)
+            {
+                RequestPermissions([global::Android.Manifest.Permission.PostNotifications], 77);
+                return;
+            }
+            SetUpdateNotifications(e.IsChecked);
+        };
+        _updateNotifications.LongClick += (_, _) => StartActivity(new Intent(Settings.ActionAppNotificationSettings).PutExtra(Settings.ExtraAppPackage, PackageName));
+        RefreshUpdateNotifications();
+        UpdateNotifications.RefreshSubscription(this);
         _dictionaryStatus = Label("", 12, MobileStyle.Muted);
         _dictionaryStatus.SetPadding(0, Dp(4), 0, Dp(12)); layout.AddView(_dictionaryStatus); RefreshDictionary();
         var preferences = new InputPreferenceStore(Path.Combine(FilesDir!.AbsolutePath, "input-preferences.json"));
@@ -260,10 +279,39 @@ public sealed class MainActivity : Activity
     {
         base.OnResume();
         _refreshPreferences?.Invoke();
+        var notificationsWereBlocked = _notificationsWereBlocked;
+        RefreshUpdateNotifications();
+        if (notificationsWereBlocked && !_notificationsWereBlocked && UpdateNotifications.Enabled(this))
+            UpdateNotifications.RefreshSubscription(this);
         var manager = (InputMethodManager)GetSystemService(InputMethodService)!;
         var enabled = manager.EnabledInputMethodList?.Any(method => method.PackageName == PackageName) == true;
         var selected = Settings.Secure.GetString(ContentResolver, Settings.Secure.DefaultInputMethod)?.StartsWith(PackageName + "/", StringComparison.Ordinal) == true;
         if (_setupStatus != null) _setupStatus.Text = selected ? "有効 · Meltypeを選択中" : enabled ? "有効 · キーボード未選択" : "キーボード未設定";
+    }
+    private void RefreshUpdateNotifications()
+    {
+        if (_updateNotifications is null) return;
+        _refreshingNotifications = true;
+        _updateNotifications.Checked = UpdateNotifications.Enabled(this);
+        _notificationsWereBlocked = _updateNotifications.Checked && !UpdateNotifications.CanPost(this);
+        _updateNotifications.Text = _notificationsWereBlocked
+            ? "更新通知（Androidでブロック中）" : "更新通知";
+        _refreshingNotifications = false;
+    }
+    private void SetUpdateNotifications(bool enabled)
+    {
+        UpdateNotifications.SetEnabled(this, enabled, success => RunOnUiThread(() =>
+        {
+            if (IsDestroyed) return;
+            RefreshUpdateNotifications();
+            if (!success && UpdateNotifications.Enabled(this) == enabled) Toast.MakeText(this, "通知の登録を完了できませんでした。通信状態とAndroidの通知設定を確認してください。", ToastLength.Long)!.Show();
+        }));
+        RefreshUpdateNotifications();
+    }
+    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, global::Android.Content.PM.Permission[] grantResults)
+    {
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 77) SetUpdateNotifications(grantResults.Length > 0 && grantResults[0] == global::Android.Content.PM.Permission.Granted);
     }
     private string ReadAsset(string name)
     {

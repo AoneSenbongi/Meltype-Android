@@ -1,6 +1,6 @@
-﻿# Meltype Android 1.2.0：セキュリティと入力データ
+﻿# Meltype Android 1.2.2：セキュリティと入力データ
 
-対象はAoneSenbongi/Meltype-Androidの1.2.0です。雪代／Yukishiro氏のMeltypeを基にした非公式Android版で、端末内AIのモデルを同梱しています。以下は実装とManifestに基づく説明で、第三者監査の結果ではありません。
+対象はAoneSenbongi/Meltype-Androidの1.2.2の実装です。雪代／Yukishiro氏のMeltypeを基にした非公式Android版で、端末内AIのモデルを同梱しています。以下は実装とManifestに基づく説明で、第三者監査の結果ではありません。
 
 ## 入力処理と通信
 
@@ -52,7 +52,7 @@ ManifestでallowBackup=falseを指定しています。端末メーカー独自�
 
 ## 更新操作
 
-「アプリを更新」はGitHubの最新正式Releaseを確認し、対応するAPKを専用キャッシュへダウンロードします。この操作用にINTERNETとREQUEST_INSTALL_PACKAGESを要求します。入力内容・辞書・学習データは送信しません。SHA256・パッケージ名・版番号・署名履歴を確認し、Androidのインストール確認へ進みます。利用者の操作なしに更新を実行しません。[更新案内](docs/ANDROID_UPDATE.md)を参照してください。
+「アプリを更新」はGitHubの最新正式Releaseを確認し、対応するAPKを専用キャッシュへダウンロードします。この操作用にINTERNETとREQUEST_INSTALL_PACKAGESを要求します。更新通知を有効にした場合はFCMの登録・受信にも通信し、Android 13以降ではPOST_NOTIFICATIONSを要求します。通知は初期状態OFFで、FCMの自動登録を無効にしています。有効にするとFirebaseへ通知用の端末登録情報・構成情報を送信します。Firebase Analytics SDKは追加せず、Analytics収集も無効にしています。FCM SDKは通知用の登録情報を端末内にも保存します。入力内容・辞書・学習データは送信しません。SHA256・パッケージ名・版番号・署名履歴を確認し、Androidのインストール確認へ進みます。利用者の操作なしに更新を実行しません。[更新案内](docs/ANDROID_UPDATE.md)と[通知の仕様](docs/ANDROID_UPDATE_NOTIFICATIONS.md)を参照してください。
 
 ## 配布と報告
 
