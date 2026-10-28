@@ -19,7 +19,9 @@ public sealed class UpdateActivity : Activity
     protected override void OnCreate(Bundle? state)
     {
         base.OnCreate(state);
+        MobileStyle.Apply(this);
         var layout=new LinearLayout(this){Orientation=Orientation.Vertical};
+        layout.SetBackgroundColor(MobileStyle.PageBackground);
         var gap=MobileStyle.Dp(this,20);layout.SetPadding(gap,gap,gap,gap);
         _status=new TextView(this){TextSize=20};layout.AddView(_status);
         _progress=new ProgressBar(this,null,global::Android.Resource.Attribute.ProgressBarStyleHorizontal){Visibility=global::Android.Views.ViewStates.Gone,Max=100};layout.AddView(_progress);

@@ -28,11 +28,12 @@ public sealed class MainActivity : Activity
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+        MobileStyle.Apply(this);
         Window!.SetSoftInputMode(SoftInput.AdjustResize);
         if (OperatingSystem.IsAndroidVersionAtLeast(30) && !OperatingSystem.IsAndroidVersionAtLeast(35)) Window.SetDecorFitsSystemWindows(false);
         var layout = new LinearLayout(this) { Orientation = Orientation.Vertical };
         layout.SetPadding(Dp(20), Dp(16), Dp(20), Dp(20));
-        layout.SetBackgroundColor(Color.White);
+        layout.SetBackgroundColor(MobileStyle.PageBackground);
         var header = new LinearLayout(this); header.SetGravity(GravityFlags.CenterVertical);
         var mark = new ImageView(this); mark.SetImageResource(Resource.Drawable.ic_meltype_mark);
         mark.ContentDescription = "Meltypeのアイコン";

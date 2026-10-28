@@ -9,6 +9,8 @@
         <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#FFFFFF</item>
+        <item name="android:forceDarkAllowed">false</item>
     </style>
     <item name="test_editor" type="id" />
     <style name="MeltypeImeTheme" parent="android:style/Theme.DeviceDefault.InputMethod">

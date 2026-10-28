@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 端末のダークテーマに合わせる。色は MobileStyle と同じ値にしておく。 -->
+    <style name="MeltypeTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#8AB4F8</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#16181B</item>
+        <item name="android:navigationBarColor">#16181B</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#16181B</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+    <!-- IME は MeltypeImeTheme を明示するので、ナビゲーションバーもダークにする。値は MobileStyle.KeyboardBackground と同じ。 -->
+    <style name="MeltypeImeTheme" parent="android:style/Theme.DeviceDefault.InputMethod">
+        <item name="android:navigationBarColor">#1B1D21</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

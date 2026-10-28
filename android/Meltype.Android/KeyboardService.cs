@@ -63,6 +63,7 @@ public sealed partial class KeyboardService : InputMethodService
     private readonly List<(Button Key, char Letter)> _letters = [];
     private bool _english, _restricted, _ready;
     private int _inputViewGeneration;
+    private bool _dark;
     private bool _preeditActive;
     private int _generation;
     private int _jobGeneration;
@@ -108,8 +109,39 @@ public sealed partial class KeyboardService : InputMethodService
         if (_inputRoot is { } root)
             root.Post(() => { root.RequestApplyInsets(); _keyboardInsets?.Apply(root); });
     }
+    private bool ApplyTheme()
+    {
+        MobileStyle.Apply(this);
+        var changed = _dark != MobileStyle.Dark;
+        _dark = MobileStyle.Dark;
+        _inputRoot?.SetBackgroundColor(MobileStyle.KeyboardBackground);
+        _candidateScroll?.SetBackgroundColor(MobileStyle.CandidateBackground);
+        if (_clipboardButton != null) MobileStyle.KeyboardKey(_clipboardButton, function: true);
+        if (_oneHandButton != null) MobileStyle.KeyboardKey(_oneHandButton, function: true);
+        if (_hide != null) MobileStyle.KeyboardKey(_hide, function: true);
+        if (Window?.Window is { } window)
+        {
+#pragma warning disable CS0618, CA1422
+            window.SetNavigationBarColor(MobileStyle.KeyboardBackground);
+            var flags = window.DecorView!.SystemUiVisibility;
+            window.DecorView.SystemUiVisibility = _dark
+                ? flags & ~(StatusBarVisibility)SystemUiFlags.LightNavigationBar
+                : flags | (StatusBarVisibility)SystemUiFlags.LightNavigationBar;
+#pragma warning restore CS0618, CA1422
+        }
+        if (changed) _candidateSignature = null;
+        return changed;
+    }
+
+    public override void OnConfigurationChanged(global::Android.Content.Res.Configuration? newConfig)
+    {
+        base.OnConfigurationChanged(newConfig);
+        if (ApplyTheme()) { BuildKeyRows(); Status(); }
+    }
+
     public override View OnCreateInputView()
     {
+        ApplyTheme();
         _letters.Clear();
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         root.SetBackgroundColor(MobileStyle.KeyboardBackground);
@@ -131,7 +163,7 @@ public sealed partial class KeyboardService : InputMethodService
         _candidateScroll = scroll;
         _candidates = new LinearLayout(this) { Orientation = Orientation.Horizontal };
         _candidates.SetGravity(GravityFlags.CenterVertical); scroll.AddView(_candidates);
-        scroll.SetBackgroundColor(Color.White);
+        scroll.SetBackgroundColor(MobileStyle.CandidateBackground);
         var candidateRow = new LinearLayout(this) { Orientation = Orientation.Horizontal, BaselineAligned = false };
         _clipboardButton = new Button(this) { Text = "▤", TextSize = 23, ContentDescription = "クリップボードを開く" };
         MobileStyle.KeyboardKey(_clipboardButton, function: true); _clipboardButton.Click += (_, _) =>
@@ -307,10 +339,12 @@ public sealed partial class KeyboardService : InputMethodService
                 contextEvaluator: ContextEvaluatorForEditor(allowLearning), coherentRomanReview: true);
             _session.SetEnglish(english);
         }); Status();
+        UpdateInputViewShown();
     }
     public override void OnStartInputView(EditorInfo? info, bool restarting)
     {
         base.OnStartInputView(info, restarting);
+        if (ApplyTheme()) BuildKeyRows();
         var generation = ++_inputViewGeneration;
         if (PasswordKeyboardPolicy.RequiresSoftwareKeyboard((int)(info?.InputType ?? InputTypes.Null)))
             Window?.Window?.DecorView?.Post(() =>
