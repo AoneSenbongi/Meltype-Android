@@ -69,6 +69,9 @@ public sealed partial class KeyboardService : InputMethodService
     private bool _shownKatakana, _choosingBrackets;
     private readonly List<(Button Key, char Letter)> _letters = [];
     private bool _english, _restricted, _ready;
+    private int _inputViewGeneration;
+    private bool _dark;
+    private bool _changingTheme;
     private bool _preeditActive;
     private int _generation;
     private int _jobGeneration;
@@ -121,8 +124,42 @@ public sealed partial class KeyboardService : InputMethodService
         if (_inputRoot is { } root)
             root.Post(() => { root.RequestApplyInsets(); _keyboardInsets?.Apply(root); });
     }
+    private bool ApplyTheme()
+    {
+        MobileStyle.Apply(this);
+        var changed = _dark != MobileStyle.Dark;
+        _dark = MobileStyle.Dark;
+        _inputRoot?.SetBackgroundColor(MobileStyle.KeyboardBackground);
+        _candidateScroll?.SetBackgroundColor(MobileStyle.CandidateBackground);
+        if (_clipboardButton != null) MobileStyle.KeyboardKey(_clipboardButton, function: true);
+        if (_oneHandButton != null) MobileStyle.KeyboardKey(_oneHandButton, function: true);
+        if (_hide != null) MobileStyle.KeyboardKey(_hide, function: true);
+        if (Window?.Window is { } window)
+        {
+#pragma warning disable CS0618, CA1422
+            window.SetNavigationBarColor(MobileStyle.KeyboardBackground);
+            var flags = window.DecorView!.SystemUiVisibility;
+            window.DecorView.SystemUiVisibility = _dark
+                ? flags & ~(StatusBarVisibility)SystemUiFlags.LightNavigationBar
+                : flags | (StatusBarVisibility)SystemUiFlags.LightNavigationBar;
+#pragma warning restore CS0618, CA1422
+        }
+        if (changed) _candidateSignature = null;
+        return changed;
+    }
+
+    public override void OnConfigurationChanged(global::Android.Content.Res.Configuration? newConfig)
+    {
+        _changingTheme = newConfig != null &&
+            ((newConfig.UiMode & global::Android.Content.Res.UiMode.NightMask) == global::Android.Content.Res.UiMode.NightYes) != _dark;
+        try { base.OnConfigurationChanged(newConfig); }
+        finally { _changingTheme = false; }
+        if (ApplyTheme()) { BuildKeyRows(); Status(); }
+    }
+
     public override View OnCreateInputView()
     {
+        ApplyTheme();
         _letters.Clear();
         var root = new LinearLayout(this) { Orientation = Orientation.Vertical };
         _root = root;
@@ -495,9 +532,14 @@ public sealed partial class KeyboardService : InputMethodService
         row.AddView(cell, new LinearLayout.LayoutParams(0, Dp(height), weight)); return key;
     }
     public override bool OnEvaluateFullscreenMode() => false;
+
+    public override bool OnEvaluateInputViewShown() =>
+        PasswordKeyboardPolicy.RequiresSoftwareKeyboard((int)(CurrentInputEditorInfo?.InputType ?? InputTypes.Null))
+        || base.OnEvaluateInputViewShown();
     public override void OnStartInput(EditorInfo? attribute, bool restarting)
     {
         base.OnStartInput(attribute, restarting);
+        if (_changingTheme && restarting) return;
         _consumedKeys.Clear();
         _english = false;
         if (!restarting) _clipboardSuggestion.Dismiss();
@@ -542,6 +584,16 @@ public sealed partial class KeyboardService : InputMethodService
     public override void OnStartInputView(EditorInfo? info, bool restarting)
     {
         base.OnStartInputView(info, restarting);
+        UpdateInputViewShown();
+        if (ApplyTheme()) BuildKeyRows();
+        var generation = ++_inputViewGeneration;
+        if (PasswordKeyboardPolicy.RequiresSoftwareKeyboard((int)(info?.InputType ?? InputTypes.Null)))
+            Window?.Window?.DecorView?.Post(() =>
+            {
+                if (OperatingSystem.IsAndroidVersionAtLeast(28) && generation == _inputViewGeneration &&
+                    PasswordKeyboardPolicy.RequiresSoftwareKeyboard((int)(CurrentInputEditorInfo?.InputType ?? InputTypes.Null)))
+                    RequestShowSelf(ShowFlags.Implicit);
+            });
         ApplyLayoutPreference();
         RefreshClipboardSuggestion(offer: true);
         Status();
@@ -572,6 +624,7 @@ public sealed partial class KeyboardService : InputMethodService
 
     public override void OnFinishInput()
     {
+        ++_inputViewGeneration;
         _flickPreview?.Hide();
         _consumedKeys.Clear();_keyTextEditor=false;
         CancelTouches();
@@ -584,6 +637,12 @@ public sealed partial class KeyboardService : InputMethodService
     }
     public override void OnFinishInputView(bool finishingInput)
     {
+        ++_inputViewGeneration;
+        if (_changingTheme && !finishingInput)
+        {
+            base.OnFinishInputView(finishingInput);
+            return;
+        }
         _flickPreview?.Hide();
         if (finishingInput) _clipboardSuggestion.Dismiss();
         CancelTouches(); _shiftState.Reset();
