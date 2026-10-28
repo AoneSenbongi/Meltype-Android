@@ -64,6 +64,7 @@ public sealed partial class KeyboardService : InputMethodService
     private bool _english, _restricted, _ready;
     private int _inputViewGeneration;
     private bool _dark;
+    private bool _changingTheme;
     private bool _preeditActive;
     private int _generation;
     private int _jobGeneration;
@@ -135,7 +136,10 @@ public sealed partial class KeyboardService : InputMethodService
 
     public override void OnConfigurationChanged(global::Android.Content.Res.Configuration? newConfig)
     {
-        base.OnConfigurationChanged(newConfig);
+        _changingTheme = newConfig != null &&
+            ((newConfig.UiMode & global::Android.Content.Res.UiMode.NightMask) == global::Android.Content.Res.UiMode.NightYes) != _dark;
+        try { base.OnConfigurationChanged(newConfig); }
+        finally { _changingTheme = false; }
         if (ApplyTheme()) { BuildKeyRows(); Status(); }
     }
 
@@ -299,6 +303,7 @@ public sealed partial class KeyboardService : InputMethodService
     public override void OnStartInput(EditorInfo? attribute, bool restarting)
     {
         base.OnStartInput(attribute, restarting);
+        if (_changingTheme && restarting) return;
         _consumedKeys.Clear();
         _english = false;
         if (!restarting) _clipboardSuggestion.Dismiss();
@@ -372,6 +377,11 @@ public sealed partial class KeyboardService : InputMethodService
     public override void OnFinishInputView(bool finishingInput)
     {
         ++_inputViewGeneration;
+        if (_changingTheme && !finishingInput)
+        {
+            base.OnFinishInputView(finishingInput);
+            return;
+        }
         if (finishingInput) _clipboardSuggestion.Dismiss();
         CancelTouches(); _shiftState.Reset();
         _english = false;
