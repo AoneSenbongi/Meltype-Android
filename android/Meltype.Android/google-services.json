@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "833875448960",
+    "project_id": "meltype-android-updates",
+    "storage_bucket": "meltype-android-updates.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:833875448960:android:6a89d84df49a3ff1f58265",
+        "android_client_info": {
+          "package_name": "jp.aonesenbongi.meltype"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCYDn_4u_Xebs3PrL5CybW1Ik-L8J_V1Aw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

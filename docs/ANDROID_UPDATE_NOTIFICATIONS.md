@@ -30,6 +30,6 @@ GitHubへの公開とワークフロー有効化は、具体的なコード・�
 
 Google Cloudプロジェクトはmeltype-android-updates（番号833875448960）。送信専用アカウントはmeltype-release-notifier@meltype-android-updates.iam.gserviceaccount.com。Workload Identity Providerはprojects/833875448960/locations/global/workloadIdentityPools/github-releases/providers/github。リポジトリID1407496285・所有者ID159512286・releaseイベント・android-タグ・release-notify.ymlのワークフローに制限している。長期秘密鍵は作成しない。
 
-Firebaseの追加は、プロジェクト更新・サービス有効化・IAM管理の権限がある状態でも403で停止した。Firebaseコンソールの初回利用手続きは、プロジェクトを管理するGoogleアカウントの所有者が行う。設定がない間のローカル検査だけAllowUnconfiguredPush=trueを指定できるが、通常のReleaseビルドはgoogle-services.json未配置なら失敗させる。この例外で作成したAPKを公開用に使わない。
+Firebaseの有効化は利用者がコンソールで完了した。通常版Androidアプリ（appId: 1:833875448960:android:6a89d84df49a3ff1f58265）を登録し、google-services.jsonを取得済み。実配信の検証は専用エミュレーターだけを宛先に行う。設定がない間のローカル検査だけAllowUnconfiguredPush=trueを指定できるが、通常のReleaseビルドはgoogle-services.json未配置なら失敗させる。この例外で作成したAPKを公開用に使わない。
 
 更新通知は、この機能を含む版を導入して通知を有効にした後のリリースが対象です。
