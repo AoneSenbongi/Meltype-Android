@@ -2,13 +2,13 @@
 
 日英を切り替えずに入力できる、Android向けの日本語キーボードです。QWERTY配列のローマ字入力をライブ変換し、変換の区切りや候補を画面上で調整できます。
 
-現在のバージョンは1.2.1です。物理キーボード接続中にパスワード・PIN欄で画面キーボードが出ない問題を修正しました。入力内容をサーバーへ送らず、端末内で処理します。
+現在のバージョンは1.2.2です。OSと独立したテーマ選択を追加し、キーボードの枠線を従来の細さに戻しました。入力内容をサーバーへ送らず、端末内で処理します。
 
 ## インストールする
 
 Android 8.0以降のarm64端末に対応します。x86_64はエミュレーターで検証しています。
 
-1. [最新版のダウンロード](https://github.com/AoneSenbongi/Meltype-Android/releases/latest)を開き、`Meltype-Android-1.2.1.apk`を取得します。
+1. [最新版のダウンロード](https://github.com/AoneSenbongi/Meltype-Android/releases/latest)を開き、`Meltype-Android-1.2.2.apk`を取得します。
 2. APKを開いてインストールします。Androidから求められた場合は、このファイルを開いたアプリにインストールを許可します。
 3. Meltypeアプリを開き、「有効にする」でMeltypeを有効にします。
 4. 「キーボードを選ぶ」でMeltypeを選び、試し書き欄で入力します。
@@ -32,7 +32,7 @@ Android 8.0以降のarm64端末に対応します。x86_64はエミュレータ�
 
 候補をタップすると選んだ文節まで確定し、後ろの文節は編集を続けられます。
 
-![文節を調整する操作例](https://raw.githubusercontent.com/AoneSenbongi/Meltype-Android/android-1.2.1/docs/images/android-1.0.0-boundary.svg)
+![文節を調整する操作例](https://raw.githubusercontent.com/AoneSenbongi/Meltype-Android/android-1.2.2/docs/images/android-1.0.0-boundary.svg)
 
 ### 誤入力を補正する
 
@@ -70,9 +70,15 @@ AIと変換の学習が両方ONの場合、未確定の短いローマ字を手�
 | ▤／× | クリップボード履歴を開く／閉じる |
 | 「片手」 | 右寄せ・左寄せ・全幅を切替 |
 
+## 1.2.2の変更点
+
+設定画面の「テーマ」で「システムに合わせる」「ライト」「ダーク」を選べます。ライト／ダークはOS設定と独立して固定され、選択を保存します。キーボードの枠線は従来の細さに戻しました。配列・キー寸法と1.2.1のパスワード欄表示修正は維持します。
+
+更新画面で、現在の版・新しい版・変更内容をダウンロード前に確認できます。更新通知は試験的機能です。「更新通知」をONにした端末には、正式版の公開を契機にFCMで通知します。通知は初期状態OFFで、Androidの通知許可とGoogle Play開発者サービスが必要です。通知から変更内容を開けますが、ダウンロードとインストールは利用者が操作します。
+
 ## 1.2.1の変更点
 
-FIDO2キーなどが物理キーボードとして認識される場合でも、パスワード・PIN欄で画面キーボードを表示します。通常の文字・URL・日付欄はAndroidの物理キーボード設定に従います。Androidのダークテーマに合わせて、アプリとキーボードの配色を切り替えます。1.2.0の初期設定と保存済みデータは引き継ぎます。
+FIDO2キーなどが物理キーボードとして認識される場合でも、パスワード・PIN欄で画面キーボードを表示します。通常の文字・URL・日付欄はAndroidの物理キーボード設定に従います。Androidのダークテーマに合わせた配色切替を追加しました。1.2.0の初期設定と保存済みデータは引き継ぎます。
 
 ## 1.2.0の変更点と初期設定
 
@@ -90,17 +96,17 @@ FIDO2キーなどが物理キーボードとして認識される場合でも、
 | 読点・句点 | 「，」「．」 |
 | 通常の空白・片手表示 | 半角・全幅 |
 
-すべての初期値は[初期設定一覧](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/docs/ANDROID_DEFAULT_SETTINGS_1_2_0.md)、各設定の使い方は[利用ガイド](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/docs/ANDROID_USER_GUIDE.md)を参照してください。配布物にも`DEFAULT_SETTINGS.json`を添付します。
+すべての初期値は[初期設定一覧](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/docs/ANDROID_DEFAULT_SETTINGS_1_2_0.md)、各設定の使い方は[利用ガイド](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/docs/ANDROID_USER_GUIDE.md)を参照してください。配布物にも`DEFAULT_SETTINGS.json`を添付します。
 
 更新時に保存済みの設定は上書きしません。古い設定ファイルに端末内AIの項目がない場合はOFFのままです。設定ファイルを正常に読めない場合はAIと学習をOFFとして扱います。個人の辞書・学習履歴・クリップボードを初期データとして配布することはありません。
 
 ## データとプライバシー
 
-入力・変換・学習・AI処理は端末内で行います。通信するのは、アプリ内で更新を確認・ダウンロードするときです。APKのインストールにはAndroid側での許可・確認が必要です。
+入力・変換・学習・AI処理は端末内で行います。通信はアプリ内更新の確認・ダウンロードと、ONにした更新通知の登録・受信に使用します。更新通知は初期状態OFFで、ONにするとFirebaseへ通知用の端末登録情報・構成情報を送信します。APKのインストールにはAndroid側での許可・確認が必要です。
 
 通常の変換学習では、確定した語句などを端末内に保存する場合があります。個人の誤字学習で保存するのは、訂正前後の短いローマ字と承認回数です。入力文全体や周辺文の編集履歴は保存・送信しません。学習は設定で停止できます。パスワード欄や学習禁止を指定された欄では個人向け処理を制限します。
 
-クリップボード履歴はテキスト最大10件・1時間をメモリー内に保持し、画像・URI・機密指定の項目は取り込みません。保存条件は[SECURITY.md](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/SECURITY.md)、個人の誤字学習は[仕様](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/docs/ANDROID_PERSONAL_TYPO_LEARNING.md)を参照してください。
+クリップボード履歴はテキスト最大10件・1時間をメモリー内に保持し、画像・URI・機密指定の項目は取り込みません。保存条件は[SECURITY.md](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/SECURITY.md)、個人の誤字学習は[仕様](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/docs/ANDROID_PERSONAL_TYPO_LEARNING.md)を参照してください。
 
 ## 既知の制限と検証範囲
 
@@ -113,13 +119,13 @@ FIDO2キーなどが物理キーボードとして認識される場合でも、
 
 ## 詳しい資料・開発
 
-- [全機能と設定の利用ガイド](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/docs/ANDROID_USER_GUIDE.md)
-- [機能の対応一覧](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/docs/ANDROID_1_3_0_FEATURES.md)
-- [導入・ビルド・検証手順](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/docs/ANDROID_PROTOTYPE.md)
-- [端末内AIの実装](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/docs/ANDROID_ZENZ.md)／[タッチ補正の仕様](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/docs/ANDROID_TOUCH_CORRECTION.md)
+- [全機能と設定の利用ガイド](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/docs/ANDROID_USER_GUIDE.md)
+- [機能の対応一覧](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/docs/ANDROID_1_3_0_FEATURES.md)
+- [導入・ビルド・検証手順](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/docs/ANDROID_PROTOTYPE.md)
+- [端末内AIの実装](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/docs/ANDROID_ZENZ.md)／[タッチ補正の仕様](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/docs/ANDROID_TOUCH_CORRECTION.md)
 
 ## 謝辞とライセンス
 
 雪代／Yukishiro氏の[Meltype](https://github.com/yksr-melt/Meltype)と協力者の成果を基にした非公式Android版です。本家Meltype 1.3.0の機能に、OSS版MozcとAndroid向けの操作を組み合わせています。文節編集や計算候補は本家から引き継いだ機能です。
 
-MeltypeとこのForkはGNU GPL v3以降です。[LICENSE](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.1/LICENSE)を参照してください。APKと対応ソース、第三者ライセンス通知を配布し、アプリ内の「ライセンス」からも確認できます。
+MeltypeとこのForkはGNU GPL v3以降です。[LICENSE](https://github.com/AoneSenbongi/Meltype-Android/blob/android-1.2.2/LICENSE)を参照してください。APKと対応ソース、第三者ライセンス通知を配布し、アプリ内の「ライセンス」からも確認できます。

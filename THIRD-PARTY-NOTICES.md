@@ -1,6 +1,6 @@
 # サードパーティー通知
 
-Meltype のソースコード (このリポジトリ) には、他者の著作物は含まれていません。
+このリポジトリと配布物が取り込む外部ライブラリの権利表示・ライセンス情報を記載します。
 
 ## 配布用パッケージに同梱しているもの
 
@@ -359,3 +359,7 @@ SPDX-License-Identifier: Unicode-3.0
 `dictionaries/` の辞書 (日本語・英語の単語、固有名詞、同音異義語の候補、文脈の手がかり) は Meltype のために作成したもので、
 Meltype 本体と同じライセンス (GPL-3.0-or-later) です。
 固有名詞の辞書に含まれる製品名・会社名は各社の商標です。
+
+## Androidの更新プッシュ通知
+
+Firebase Messagingとその依存パッケージをNuGetから取り込む。MicrosoftのバインディングはMIT、FirebaseなどのJavaライブラリとGoogle Play servicesは各パッケージのライセンスに従う。固定した版とパッケージ同梱の説明・通知全文は[android/FIREBASE-NOTICES.txt](android/FIREBASE-NOTICES.txt)に収録し、APKにも同梱する。Google Play servicesの一部はAndroid SDK Licenseで配布されている。

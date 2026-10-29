@@ -15,7 +15,10 @@ public sealed class UpdateActivity : Activity
 {
     readonly CancellationTokenSource _cancel=new();
     TextView _status=null!;Button _action=null!;ProgressBar _progress=null!;
+    TextView _notes=null!;ScrollView _changes=null!;Button _details=null!;
     ReleaseUpdate? _update;string? _downloaded;
+    protected override void AttachBaseContext(Context? context) =>
+        base.AttachBaseContext(MobileStyle.ActivityContext(context!));
     protected override void OnCreate(Bundle? state)
     {
         base.OnCreate(state);
@@ -24,6 +27,13 @@ public sealed class UpdateActivity : Activity
         layout.SetBackgroundColor(MobileStyle.PageBackground);
         var gap=MobileStyle.Dp(this,20);layout.SetPadding(gap,gap,gap,gap);
         _status=new TextView(this){TextSize=20};layout.AddView(_status);
+        _notes=new TextView(this){TextSize=14};_notes.SetTextColor(MobileStyle.Ink);_notes.SetTextIsSelectable(true);
+        _notes.SetPadding(0,MobileStyle.Dp(this,16),0,MobileStyle.Dp(this,16));
+        _changes=new ScrollView(this){Visibility=global::Android.Views.ViewStates.Gone};_changes.AddView(_notes);
+        layout.AddView(_changes,new LinearLayout.LayoutParams(-1,0,1));
+        _details=new Button(this){Text="GitHubで詳細を見る",Visibility=global::Android.Views.ViewStates.Gone};MobileStyle.Button(_details);
+        _details.Click+=(_,_)=>{if(_update is not null)StartActivity(new Intent(Intent.ActionView,global::Android.Net.Uri.Parse("https://github.com/AoneSenbongi/Meltype-Android/releases/tag/android-"+_update.Version)));};
+        layout.AddView(_details,new LinearLayout.LayoutParams(-1,MobileStyle.Dp(this,48)));
         _progress=new ProgressBar(this,null,global::Android.Resource.Attribute.ProgressBarStyleHorizontal){Visibility=global::Android.Views.ViewStates.Gone,Max=100};layout.AddView(_progress);
         _action=new Button(this){Text="更新を確認"};MobileStyle.Button(_action);layout.AddView(_action,new LinearLayout.LayoutParams(-1,MobileStyle.Dp(this,48)){TopMargin=MobileStyle.Dp(this,16)});_action.Click+=async(_,_)=>await Act();
         var frame=new FrameLayout(this);frame.AddView(layout,new FrameLayout.LayoutParams(-1,-1));
@@ -37,6 +47,7 @@ public sealed class UpdateActivity : Activity
     async Task Check()
     {
         _action.Enabled=false;_status.Text="確認中…";
+        _changes.Visibility=_details.Visibility=global::Android.Views.ViewStates.Gone;
         try
         {
             var current=PackageManager!.GetPackageInfo(PackageName!,PackageInfoFlags.MetaData)!.VersionName??"0.0.0";
@@ -45,11 +56,36 @@ public sealed class UpdateActivity : Activity
             await response.Content.LoadIntoBufferAsync(1048576, _cancel.Token);
             var json=await response.Content.ReadAsStringAsync(_cancel.Token);if(json.Length>1048576)throw new IOException("Release metadata too large");
             _update=ReleaseUpdate.Find(json,PackageName!,current);
-            _status.Text=_update is null?"利用できる更新はありません":$"{current} → {_update.Version}";_action.Text=_update is null?"再確認":"更新";
+            _status.Text=_update is null?$"{current}\n利用できる更新はありません":$"{current} → {_update.Version}";_action.Text=_update is null?"再確認":"ダウンロードして更新";
+            if(_update is not null)
+            {
+                _notes.TextFormatted=FormatNotes(string.IsNullOrWhiteSpace(_update.Notes)?"変更内容は公開されていません。":_update.Notes);
+                _changes.Visibility=_details.Visibility=global::Android.Views.ViewStates.Visible;
+                _changes.ScrollTo(0,0);
+            }
         }
         catch(System.OperationCanceledException) { }
         catch(Exception) { _status.Text="更新を確認できませんでした";_action.Text="再試行"; }
         finally { if(!IsDestroyed)_action.Enabled=true; }
+    }
+    static global::Android.Text.SpannableStringBuilder FormatNotes(string notes)
+    {
+        var result=new global::Android.Text.SpannableStringBuilder();
+        foreach(var original in notes.Replace("\r\n","\n").Split('\n'))
+        {
+            var heading=original.StartsWith('#');
+            var line=heading?original.TrimStart('#',' '):original;
+            if(line.StartsWith("- "))line="• "+line[2..];
+            line=System.Text.RegularExpressions.Regex.Replace(line,@"\[([^\]]+)\]\((https://[^)]+)\)","$1（$2）");
+            line=line.Replace("`","").Replace("**","");
+            var start=result.Length();result.Append(line);result.Append("\n");
+            if(heading)
+            {
+                result.SetSpan(new global::Android.Text.Style.StyleSpan(global::Android.Graphics.TypefaceStyle.Bold),start,start+line.Length,global::Android.Text.SpanTypes.ExclusiveExclusive);
+                result.SetSpan(new global::Android.Text.Style.RelativeSizeSpan(1.12f),start,start+line.Length,global::Android.Text.SpanTypes.ExclusiveExclusive);
+            }
+        }
+        return result;
     }
     async Task Act()
     {

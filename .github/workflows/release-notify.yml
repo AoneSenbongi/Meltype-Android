@@ -1,0 +1,31 @@
+name: Notify Android release
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: release-notification-${{ github.event.release.id }}
+  cancel-in-progress: false
+jobs:
+  notify:
+    if: github.repository == 'AoneSenbongi/Meltype-Android' && !github.event.release.draft && !github.event.release.prerelease && startsWith(github.event.release.tag_name, 'android-')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: node --test android/tools/send-release-notification.test.mjs
+      - id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: projects/833875448960/locations/global/workloadIdentityPools/github-releases/providers/github
+          service_account: meltype-release-notifier@meltype-android-updates.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/firebase.messaging
+          create_credentials_file: false
+      - run: node android/tools/send-release-notification.mjs
+        env:
+          FCM_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}

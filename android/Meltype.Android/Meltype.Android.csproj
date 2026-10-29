@@ -5,8 +5,8 @@
     <OutputType>Exe</OutputType>
     <ApplicationId>jp.aonesenbongi.meltype</ApplicationId>
     <ApplicationTitle>Meltype</ApplicationTitle>
-    <ApplicationVersion>33</ApplicationVersion>
-    <ApplicationDisplayVersion>1.2.1</ApplicationDisplayVersion>
+    <ApplicationVersion>34</ApplicationVersion>
+    <ApplicationDisplayVersion>1.2.2</ApplicationDisplayVersion>
     <RuntimeIdentifiers>android-arm64;android-x64</RuntimeIdentifiers>
     <AndroidPackageFormats>apk</AndroidPackageFormats>
     <AndroidLinkMode>None</AndroidLinkMode>
@@ -20,6 +20,7 @@
     <ProjectReference Include="../Meltype.Android.Core/Meltype.Android.Core.csproj" />
     <AndroidJavaSource Include="Java/**/*.java" />
     <AndroidAsset Include="../../LICENSE" Link="LICENSE.txt" />
+    <AndroidAsset Include="../FIREBASE-NOTICES.txt" Link="licenses/firebase/THIRD_PARTY_NOTICES.txt" />
   </ItemGroup>
   <ItemGroup Condition="'$(LocalZenzModel)' != ''">
     <AndroidNativeLibrary Remove="Native/*/libmeltype_zenz.so" />
@@ -28,6 +29,13 @@
     <AndroidAsset Include="$(LocalZenzModel)" Link="zenz/zenz-v3.2-small-Q5_K_M.gguf" />
     <AndroidAsset Include="../zenz-native/licenses/*.txt" Link="licenses/zenz/%(Filename)%(Extension)" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Xamarin.Firebase.Messaging" Version="125.1.3" />
+    <GoogleServicesJson Include="google-services.json" Condition="Exists('google-services.json') And '$(ApplicationId)' == 'jp.aonesenbongi.meltype'" />
+  </ItemGroup>
+  <Target Name="RequireFirebaseConfiguration" BeforeTargets="Build" Condition="'$(Configuration)' == 'Release' And '$(ApplicationId)' == 'jp.aonesenbongi.meltype' And '$(AllowUnconfiguredPush)' != 'true'">
+    <Error Condition="!Exists('google-services.json')" Text="Register the Firebase Android app and save its google-services.json before preparing a release. See docs/ANDROID_UPDATE_NOTIFICATIONS.md." />
+  </Target>
   <Target Name="RequireLocalZenz" BeforeTargets="Build" Condition="'$(LocalZenzModel)' != ''">
     <Error Condition="!Exists('$(LocalZenzModel)') Or !Exists('Native/arm64-v8a/libmeltype_zenz.so') Or !Exists('Native/x86_64/libmeltype_zenz.so')" Text="Build both zenz native libraries and provide the verified local model first. See docs/ANDROID_ZENZ.md." />
   </Target>

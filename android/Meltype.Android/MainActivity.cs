@@ -27,8 +27,13 @@ public sealed class MainActivity : Activity
     private Action? _refreshLayout;
     private ISharedPreferencesOnSharedPreferenceChangeListener? _layoutListener;
     private const int QwertyLayout = 0, GodanLayout = 1;
+    private Switch? _updateNotifications;
+    private bool _refreshingNotifications;
+    private bool _notificationsWereBlocked;
     private string DictionaryPath => Path.Combine(FilesDir!.AbsolutePath, "user-dictionary.json");
     private int Dp(float value) => MobileStyle.Dp(this, value);
+    protected override void AttachBaseContext(Context? context) =>
+        base.AttachBaseContext(MobileStyle.ActivityContext(context!));
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
@@ -62,6 +67,41 @@ public sealed class MainActivity : Activity
         Add("キーボードを選ぶ", () => ((InputMethodManager)GetSystemService(InputMethodService)!).ShowInputMethodPicker(), setup);
         Add("アプリを更新", ShowUpdate);
         Add("単語登録・辞書の取り込み", ShowDictionary);
+        var themeRow = new LinearLayout(this);
+        themeRow.SetGravity(GravityFlags.CenterVertical);
+        themeRow.AddView(Label("テーマ", 14, MobileStyle.Ink), new LinearLayout.LayoutParams(0, -2, 1));
+        var theme = new Spinner(this) { ContentDescription = "テーマ" };
+        var themeAdapter = new ArrayAdapter<string>(this, global::Android.Resource.Layout.SimpleSpinnerItem,
+            new[] { "システムに合わせる", "ライト", "ダーク" });
+        themeAdapter.SetDropDownViewResource(global::Android.Resource.Layout.SimpleSpinnerDropDownItem);
+        theme.Adapter = themeAdapter;
+        var selectedTheme = MobileStyle.Theme(this);
+        theme.SetSelection(Enum.IsDefined(selectedTheme) ? (int)selectedTheme : 0);
+        theme.ItemSelected += (_, e) =>
+        {
+            var chosen = (KeyboardTheme)e.Position;
+            if (chosen == MobileStyle.Theme(this)) return;
+            if (MobileStyle.SaveTheme(this, chosen)) Recreate();
+            else Toast.MakeText(this, "テーマを保存できません。", ToastLength.Long)!.Show();
+        };
+        themeRow.AddView(theme, new LinearLayout.LayoutParams(-2, Dp(48)));
+        layout.AddView(themeRow);
+        _updateNotifications = new Switch(this) { Text = "更新通知", TextSize = 14, ContentDescription = "更新通知" };
+        _updateNotifications.SetTextColor(MobileStyle.Ink);
+        layout.AddView(_updateNotifications, new LinearLayout.LayoutParams(-1, Dp(52)));
+        _updateNotifications.CheckedChange += (_, e) =>
+        {
+            if (_refreshingNotifications) return;
+            if (e.IsChecked && OperatingSystem.IsAndroidVersionAtLeast(33) && CheckSelfPermission(global::Android.Manifest.Permission.PostNotifications) != global::Android.Content.PM.Permission.Granted)
+            {
+                RequestPermissions([global::Android.Manifest.Permission.PostNotifications], 77);
+                return;
+            }
+            SetUpdateNotifications(e.IsChecked);
+        };
+        _updateNotifications.LongClick += (_, _) => StartActivity(new Intent(Settings.ActionAppNotificationSettings).PutExtra(Settings.ExtraAppPackage, PackageName));
+        RefreshUpdateNotifications();
+        UpdateNotifications.RefreshSubscription(this);
         _dictionaryStatus = Label("", 12, MobileStyle.Muted);
         _dictionaryStatus.SetPadding(0, Dp(4), 0, Dp(12)); layout.AddView(_dictionaryStatus); RefreshDictionary();
 
@@ -301,10 +341,39 @@ public sealed class MainActivity : Activity
         base.OnResume();
         _refreshPreferences?.Invoke();
         _refreshLayout?.Invoke();
+        var notificationsWereBlocked = _notificationsWereBlocked;
+        RefreshUpdateNotifications();
+        if (notificationsWereBlocked && !_notificationsWereBlocked && UpdateNotifications.Enabled(this))
+            UpdateNotifications.RefreshSubscription(this);
         var manager = (InputMethodManager)GetSystemService(InputMethodService)!;
         var enabled = manager.EnabledInputMethodList?.Any(method => method.PackageName == PackageName) == true;
         var selected = Settings.Secure.GetString(ContentResolver, Settings.Secure.DefaultInputMethod)?.StartsWith(PackageName + "/", StringComparison.Ordinal) == true;
         if (_setupStatus != null) _setupStatus.Text = selected ? "有効 · Meltypeを選択中" : enabled ? "有効 · キーボード未選択" : "キーボード未設定";
+    }
+    private void RefreshUpdateNotifications()
+    {
+        if (_updateNotifications is null) return;
+        _refreshingNotifications = true;
+        _updateNotifications.Checked = UpdateNotifications.Enabled(this);
+        _notificationsWereBlocked = _updateNotifications.Checked && !UpdateNotifications.CanPost(this);
+        _updateNotifications.Text = _notificationsWereBlocked
+            ? "更新通知（Androidでブロック中）" : "更新通知";
+        _refreshingNotifications = false;
+    }
+    private void SetUpdateNotifications(bool enabled)
+    {
+        UpdateNotifications.SetEnabled(this, enabled, success => RunOnUiThread(() =>
+        {
+            if (IsDestroyed) return;
+            RefreshUpdateNotifications();
+            if (!success && UpdateNotifications.Enabled(this) == enabled) Toast.MakeText(this, "通知の登録を完了できませんでした。通信状態とAndroidの通知設定を確認してください。", ToastLength.Long)!.Show();
+        }));
+        RefreshUpdateNotifications();
+    }
+    public override void OnRequestPermissionsResult(int requestCode, string[] permissions, global::Android.Content.PM.Permission[] grantResults)
+    {
+        base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 77) SetUpdateNotifications(grantResults.Length > 0 && grantResults[0] == global::Android.Content.PM.Permission.Granted);
     }
     private string ReadAsset(string name)
     {
