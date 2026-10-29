@@ -2,6 +2,8 @@
 
 利用者の指定により、正式Releaseの公開を契機にGitHub ActionsからFirebase Cloud Messaging（FCM）へ送信し、Meltypeが受信して通知する。日次のGitHubポーリングは行わない。新しいFirebaseプロジェクトを作成し、通常版のapplicationIdにAndroidアプリを登録する。
 
+1.2.2では更新通知を試験的機能として提供する。実機での受信は未検証で、GitHub ActionsのReleaseイベントによる自動送信は公開後の初回実行で確認する。
+
 ## アプリの動作
 
 - 設定画面に「更新通知」スイッチを置き、初期値はOFFとする。利用者がONにし、Android 13以降で通知を許可した後にFCMの更新トピックを購読する。
