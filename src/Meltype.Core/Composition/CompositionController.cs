@@ -1537,6 +1537,33 @@ public sealed partial class CompositionController
         else if (vk == VirtualKeys.Up) NextCandidate(-1);
     }
 
+    /// <summary>大⇔小キー: 直前のかなに濁点 (handakuten=false) / 半濁点 (true) を付ける。</summary>
+    public bool ApplyDakuten(bool handakuten)
+    {
+        if (_text.IsAlphanumeric || !_text.TryAppendDakuten(handakuten)) return false;
+        _converting = false;
+        UpdateView();
+        return true;
+    }
+
+    /// <summary>大⇔小キーのタップ: 直前のかなを清音/濁音/半濁音/小書きの順に切り替える。</summary>
+    public bool CycleKanaVariant()
+    {
+        if (_text.IsAlphanumeric || !_text.CycleKanaVariant()) return false;
+        _converting = false;
+        UpdateView();
+        return true;
+    }
+
+    /// <summary>大⇔小キー: 直前のかなを小書き/通常に切り替える。</summary>
+    public bool ToggleSmallLast()
+    {
+        if (_text.IsAlphanumeric || !_text.ToggleSmallLast()) return false;
+        _converting = false;
+        UpdateView();
+        return true;
+    }
+
     /// <summary>Androidのカタカナ表示を解除し、入力を保持して自動判別へ戻す。</summary>
     public void RestoreAutomaticMode()
     {

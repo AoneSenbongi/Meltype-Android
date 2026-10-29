@@ -88,6 +88,62 @@ public sealed class CompositionText
         _units.Add(new CompositionUnit(kana.ToString(), raw.ToString()));
     }
 
+    /// <summary>大⇔小キー: 直前の 1 文字を濁音/半濁音にする。出来なければ false。</summary>
+    public bool TryAppendDakuten(bool handakuten)
+    {
+        if (_units.Count == 0) return false;
+        var last = _units[^1];
+        if (last.Kana.Length == 0) return false;
+        var mark = handakuten ? '゜' : '゛';
+        var combined = Detection.KanaDetector.Combine(last.Kana[^1], mark)
+            ?? (handakuten ? KanaChars.ToHandakuten(last.Kana[^1]) : null);
+        if (combined is not { } next) return false;
+        _units[^1] = new CompositionUnit(last.Kana[..^1] + next, last.Raw + mark);
+        return true;
+    }
+
+    /// <summary>大⇔小キー: 直前の 1 文字を小書き/通常に切り替える。出来なければ false。</summary>
+    public bool ToggleSmallLast()
+    {
+        for (var i = _units.Count - 1; i >= 0; i--)
+        {
+            var unit = _units[i];
+            if (unit.Kana.Length == 0) continue;
+            var last = unit.Kana[^1];
+            var large = KanaChars.ToLarge(last);
+            var next = large ?? KanaChars.ToSmall(last);
+            if (next is null) return false;
+            var marker = large is not null ? "大" : "小";
+            _units[i] = new CompositionUnit(unit.Kana[..^1] + next, unit.Raw + marker);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>大⇔小キーのタップ: 直前のかなを 清音→濁音→半濁音→清音、小書き→通常 の順に切り替える。</summary>
+    public bool CycleKanaVariant()
+    {
+        for (var i = _units.Count - 1; i >= 0; i--)
+        {
+            var unit = _units[i];
+            if (unit.Kana.Length == 0) continue;
+            var last = unit.Kana[^1];
+            char? next = KanaChars.ToLarge(last)
+                ?? KanaChars.ToBaseFromHandakuten(last)
+                ?? KanaChars.ToHandakuten(last)
+                ?? KanaChars.ToBaseFromVoiced(last)
+                ?? Detection.KanaDetector.Combine(last, '゛')
+                ?? KanaChars.ToSmall(last);
+            if (next is not { } value) return false;
+            var marker = KanaChars.ToLarge(last) is not null ? "大"
+                : KanaChars.ToSmall(last) is not null ? "小"
+                : value is 'ぱ' or 'ぴ' or 'ぷ' or 'ぺ' or 'ぽ' ? "゜" : "゛";
+            _units[i] = new CompositionUnit(unit.Kana[..^1] + value, unit.Raw + marker);
+            return true;
+        }
+        return false;
+    }
+
     /// <summary>打った文字そのもの。</summary>
     public string Raw => string.Concat(_units.Select(u => u.Raw)) + _pending;
 

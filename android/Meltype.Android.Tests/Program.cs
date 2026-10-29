@@ -52,6 +52,7 @@ ModelNumberTests.Run();
 ModelBoundaryTests.Run();
 MozcCandidateTests.Run();
 AndroidZenzTests.Run();
+GodanKeyboardTests.Run();
 Feature130Tests.Run();
 AdaptiveInputTests.Run();
 PersonalRomajiTests.Run();
@@ -88,6 +89,46 @@ var ciSession = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) 
 ciSession.Character('c'); ciSession.Character('i');
 if (ciSession.View?.Text != "し") throw new Exception("Upstream ci conversion is missing.");
 Console.WriteLine("PASS: upstream ci spelling converts to し");
+
+var qaSession = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+qaSession.Character('q'); qaSession.Character('a');
+if (qaSession.View?.Text != "くぁ") throw new Exception("GODAN Q flick spelling qa does not convert to くぁ.");
+Console.WriteLine("PASS: GODAN Q flick spelling qa converts to くぁ");
+
+// GODAN の最下段中央キー: タップ=小書き/通常、左右フリック=濁点/半濁点。
+var dakuten = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+foreach (var c in "ha") dakuten.Character(c);
+if (dakuten.View?.Text != "は" || !dakuten.ApplyDakuten(false) || dakuten.View?.Text != "ば")
+    throw new Exception("GODAN 大⇔小 key did not add dakuten to は.");
+var handakuten = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+foreach (var c in "ha") handakuten.Character(c);
+if (!handakuten.ApplyDakuten(true) || handakuten.View?.Text != "ぱ")
+    throw new Exception("GODAN 大⇔小 key did not add handakuten to は.");
+var small = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+foreach (var c in "ya") small.Character(c);
+if (small.View?.Text != "や" || !small.ToggleSmallLast() || small.View?.Text != "ゃ" || !small.ToggleSmallLast() || small.View?.Text != "や")
+    throw new Exception("GODAN 大⇔小 key did not toggle や and ゃ.");
+var tsu = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+foreach (var c in "tsu") tsu.Character(c);
+if (tsu.View?.Text != "つ" || !tsu.ToggleSmallLast() || tsu.View?.Text != "っ" || !tsu.ToggleSmallLast() || tsu.View?.Text != "つ")
+    throw new Exception("GODAN 大⇔小 key did not toggle つ and っ.");
+Console.WriteLine("PASS: GODAN 大⇔小 key toggles small/large and adds dakuten/handakuten");
+
+// 大⇔小キーのタップ循環: は→ば→ぱ→は、や→ゃ→や。
+var cycle = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+foreach (var c in "ha") cycle.Character(c);
+if (!cycle.CycleKanaVariant() || cycle.View?.Text != "ば" || !cycle.CycleKanaVariant() || cycle.View?.Text != "ぱ" ||
+    !cycle.CycleKanaVariant() || cycle.View?.Text != "は")
+    throw new Exception("GODAN 大⇔小 key did not cycle は→ば→ぱ→は.");
+var cycleSmall = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+foreach (var c in "ya") cycleSmall.Character(c);
+if (!cycleSmall.CycleKanaVariant() || cycleSmall.View?.Text != "ゃ" || !cycleSmall.CycleKanaVariant() || cycleSmall.View?.Text != "や")
+    throw new Exception("GODAN 大⇔小 key did not cycle や→ゃ→や.");
+var leftOnVoiced = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
+foreach (var c in "ha") leftOnVoiced.Character(c);
+if (!leftOnVoiced.ApplyDakuten(false) || leftOnVoiced.View?.Text != "ば" || !leftOnVoiced.ApplyDakuten(true) || leftOnVoiced.View?.Text != "ぱ")
+    throw new Exception("GODAN handakuten did not convert ば to ぱ.");
+Console.WriteLine("PASS: GODAN 大⇔小 tap cycle and handakuten on voiced kana");
 
 var punctuationSession = new AndroidInputSession(new FakeConverter(), _ => [], (_, _, _) => { });
 if (punctuationSession.PunctuationCharacter("我々は宇宙人だ") != '.' || punctuationSession.PunctuationCharacter("我々は") != ',') throw new Exception("Punctuation key prediction is wrong.");

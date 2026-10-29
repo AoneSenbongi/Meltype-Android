@@ -33,6 +33,10 @@ public sealed class AndroidInputSession : ICompositionHost
         ["です", "ます", "でした", "ました", "ません", "ない", "なかった", "だった", "である", "だ", "と思う", "と思います"];
     public CompositionView? View { get; private set; }
     public bool Katakana { get; private set; }
+    public bool ApplyDakuten(bool handakuten) => _controller.ApplyDakuten(handakuten);
+    public bool ToggleSmallLast() => _controller.ToggleSmallLast();
+    public bool CycleKanaVariant() => _controller.CycleKanaVariant();
+
     public void ToggleKana()
     {
         if (_english || ChoosingBrackets || string.IsNullOrEmpty(View?.Text)) return;
@@ -121,6 +125,7 @@ public sealed class AndroidInputSession : ICompositionHost
         _editedWrong = null;
         Commit();
         _english = english;
+        if (!english) _controller.RestoreAutomaticMode();
     }
 
     public void Character(char character, LetterTouch? touch = null)
@@ -278,6 +283,8 @@ public sealed class AndroidInputSession : ICompositionHost
         _editedWrong = null; _commitRaw = null;
         _output(1, text, null);
     }
+    /// <summary>未確定の入力を確定してから、そのままの文字列を入れる (GODAN の「」など)。</summary>
+    public void InsertLiteral(string text) { Commit(); CommitText(text); }
     public void Show(CompositionView view)
     {
         View = view.Converting || !_preferences().ShowCandidatesWhileTyping ? view : _controller.LiveCandidateView(view);
